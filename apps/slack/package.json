@@ -11,6 +11,7 @@
     "smoke:form": "npm run build && node dist/scripts/smoke-form-review.js"
   },
   "dependencies": {
+    "@securelore/memory": "0.1.0",
     "@securelore/review-core": "0.1.0",
     "@securelore/slack-ui": "0.1.0",
     "@slack/bolt": "^4.4.0"

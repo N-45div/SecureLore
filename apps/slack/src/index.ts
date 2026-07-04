@@ -4,11 +4,15 @@ import { App } from "@slack/bolt";
 import { renderReviewPacket } from "@securelore/slack-ui";
 import { runReviewFromForm } from "./input.js";
 import { LocalStore } from "./storage/local-store.js";
+import { ReviewStore } from "./storage/review-store.js";
 
 const currentDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = join(currentDir, "../../..");
 const socketMode = process.env.SLACK_SOCKET_MODE !== "false";
-const store = new LocalStore(join(repoRoot, ".data/slack"));
+const store = new ReviewStore({
+  local: new LocalStore(join(repoRoot, ".data/slack")),
+  databaseUrl: process.env.DATABASE_URL
+});
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -41,7 +45,10 @@ app.view("securelore_review_submit", async ({ ack, body, view, client }) => {
 
   try {
     const packet = runReviewFromForm({ manifestJson, mcpToolsJson });
-    await store.saveReview(packet);
+    await store.saveReview(packet, {
+      slackTeamId: body.team?.id,
+      slackUserId: body.user.id
+    });
     await ack();
     await client.chat.postMessage({
       channel: body.user.id,

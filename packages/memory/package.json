@@ -1,0 +1,22 @@
+{
+  "name": "@securelore/memory",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "schema:apply": "npm run build && node dist/scripts/apply-schema.js",
+    "schema:print": "node dist/scripts/print-schema.js",
+    "seed:policies": "npm run build && node dist/scripts/seed-policies.js",
+    "smoke:retrieve": "npm run build && node dist/scripts/smoke-retrieve.js"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.0.1",
+    "cohere-ai": "^7.19.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "slack-marketplace.scope-data-access",
+    "source": "Slack Marketplace guidelines",
+    "sourceUrl": "https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/",
+    "title": "Scope and data access review",
+    "content": "Slack Marketplace apps should follow least privilege. Apps should not request broad workspace message or file access without a clear tested use case. User token scopes should only be used when the app needs to act from the user's perspective and bot token scopes are insufficient. Submitted scopes should map to functionality reviewers can test.",
+    "tags": ["slack", "marketplace", "scopes", "least-privilege"]
+  },
+  {
+    "id": "slack-marketplace.public-pages",
+    "source": "Slack Marketplace guidelines",
+    "sourceUrl": "https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/",
+    "title": "Public landing, support, and privacy pages",
+    "content": "A Slack app should provide a public landing page explaining the app and install path, a public support page with a way to contact support without requiring an additional account, and a privacy policy explaining collected data, usage, retention, deletion, and contact methods.",
+    "tags": ["slack", "marketplace", "privacy", "support", "landing-page"]
+  },
+  {
+    "id": "slack-marketplace.ai-components",
+    "source": "Slack Marketplace guidelines",
+    "sourceUrl": "https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/",
+    "title": "AI component disclosures",
+    "content": "Slack apps exposing users to generative AI should be transparent about actions, disclose model use, data retention, whether user data is used by the LLM, data tenancy and residency where relevant, and should not use Slack data to train large language models. AI should not make consequential decisions without human review.",
+    "tags": ["slack", "marketplace", "ai", "disclosure", "llm"]
+  },
+  {
+    "id": "slack-marketplace.security-tls",
+    "source": "Slack Marketplace guidelines",
+    "sourceUrl": "https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/",
+    "title": "Security and TLS",
+    "content": "Slack app endpoints for commands, events, and interactivity should verify request authenticity and use TLS for traffic between Slack and the app. Production submissions should not depend on localhost or unsecured HTTP request URLs.",
+    "tags": ["slack", "marketplace", "security", "tls"]
+  },
+  {
+    "id": "slack-mcp.tool-discovery",
+    "source": "Slack MCP distribution guidance",
+    "sourceUrl": "https://docs.slack.dev/ai/slackbot-mcp-client/distributing/",
+    "title": "MCP tool discovery and metadata",
+    "content": "MCP tools should be discoverable with clear names, titles, descriptions, input schemas, and accurate annotations. Read-only hints should match actual behavior. Tools that mutate state, create records, delete records, send messages, or trigger external effects should not be marked read-only and should make write behavior clear to users.",
+    "tags": ["slack", "mcp", "tools", "readOnlyHint", "schemas"]
+  }
+]
