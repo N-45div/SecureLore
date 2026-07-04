@@ -1,14 +1,14 @@
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { App } from "@slack/bolt";
-import { reviewArtifacts } from "@securelore/review-core";
-import type { McpToolsListLike, SlackManifestLike } from "@securelore/review-core";
 import { renderReviewPacket } from "@securelore/slack-ui";
+import { runReviewFromForm } from "./input.js";
+import { LocalStore } from "./storage/local-store.js";
 
 const currentDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = join(currentDir, "../../..");
 const socketMode = process.env.SLACK_SOCKET_MODE !== "false";
+const store = new LocalStore(join(repoRoot, ".data/slack"));
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -23,17 +23,40 @@ app.command("/securelore", async ({ command, ack, respond }) => {
   if (!command.text.trim().startsWith("review")) {
     await respond({
       response_type: "ephemeral",
-      text: "Use `/securelore review` to run the demo preflight review."
+      text: "Use `/securelore review` to open a preflight review form."
     });
     return;
   }
 
-  const packet = await runDemoReview();
-  await respond({
-    response_type: "ephemeral",
-    text: packet.overallRisk.summary,
-    blocks: renderReviewPacket(packet)
+  await app.client.views.open({
+    trigger_id: command.trigger_id,
+    view: reviewModal()
   });
+});
+
+app.view("securelore_review_submit", async ({ ack, body, view, client }) => {
+  const manifestJson =
+    view.state.values.manifest_block?.manifest_json?.value ?? "";
+  const mcpToolsJson = view.state.values.mcp_tools_block?.mcp_tools_json?.value ?? "";
+
+  try {
+    const packet = runReviewFromForm({ manifestJson, mcpToolsJson });
+    await store.saveReview(packet);
+    await ack();
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: packet.overallRisk.summary,
+      blocks: renderReviewPacket(packet)
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Review failed.";
+    await ack({
+      response_action: "errors",
+      errors: {
+        manifest_block: message
+      }
+    });
+  }
 });
 
 for (const actionId of [
@@ -45,6 +68,18 @@ for (const actionId of [
   app.action(actionId, async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions") return;
+    const action = body.actions[0];
+    const reviewId =
+      action && "value" in action && typeof action.value === "string"
+        ? action.value
+        : "unknown";
+    await store.appendFeedback({
+      reviewId,
+      actionId,
+      userId: body.user.id,
+      channelId: body.channel?.id,
+      createdAt: new Date().toISOString()
+    });
     await client.chat.postEphemeral({
       channel: body.channel?.id ?? "",
       user: body.user.id,
@@ -59,24 +94,64 @@ app.event("app_mention", async ({ event, say }) => {
     return;
   }
 
-  const packet = await runDemoReview();
-  await say({
-    text: packet.overallRisk.summary,
-    blocks: renderReviewPacket(packet)
-  });
+  await say("Run `/securelore review` to paste a real Slack manifest or MCP tools/list response.");
 });
 
-async function runDemoReview() {
-  const [manifestRaw, toolsRaw] = await Promise.all([
-    readFile(join(repoRoot, "artifacts/samples/bad-support-agent.manifest.json"), "utf8"),
-    readFile(join(repoRoot, "artifacts/samples/bad-mcp-tools.json"), "utf8")
-  ]);
-
-  return reviewArtifacts({
-    manifest: JSON.parse(manifestRaw) as SlackManifestLike,
-    mcpTools: JSON.parse(toolsRaw) as McpToolsListLike,
-    fixtureIds: ["sg-001-broad-history-scopes", "sg-004-mcp-vague-write-tool"]
-  });
+function reviewModal() {
+  return {
+    type: "modal" as const,
+    callback_id: "securelore_review_submit",
+    title: {
+      type: "plain_text" as const,
+      text: "SecureLore Review"
+    },
+    submit: {
+      type: "plain_text" as const,
+      text: "Run review"
+    },
+    close: {
+      type: "plain_text" as const,
+      text: "Cancel"
+    },
+    blocks: [
+      {
+        type: "input" as const,
+        block_id: "manifest_block",
+        optional: true,
+        label: {
+          type: "plain_text" as const,
+          text: "Slack app manifest JSON"
+        },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "manifest_json",
+          multiline: true,
+          placeholder: {
+            type: "plain_text" as const,
+            text: "{ \"display_information\": ... }"
+          }
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "mcp_tools_block",
+        optional: true,
+        label: {
+          type: "plain_text" as const,
+          text: "MCP tools/list JSON"
+        },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "mcp_tools_json",
+          multiline: true,
+          placeholder: {
+            type: "plain_text" as const,
+            text: "{ \"tools\": [...] }"
+          }
+        }
+      }
+    ]
+  };
 }
 
 await app.start(Number(process.env.PORT ?? 3000));

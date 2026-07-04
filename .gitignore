@@ -1,4 +1,5 @@
 .internal/
+.data/
 .env
 .env.*
 !.env.example
