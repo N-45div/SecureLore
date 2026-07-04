@@ -4,6 +4,7 @@ import type {
   McpToolsListLike,
   RecommendedAction,
   ReviewPacket,
+  PolicyContext,
   ScopeJustification,
   SlackManifestLike
 } from "./types.js";
@@ -40,6 +41,7 @@ export interface ReviewInput {
   manifest?: SlackManifestLike;
   mcpTools?: McpToolsListLike;
   fixtureIds?: string[];
+  policyContext?: PolicyContext[];
 }
 
 export function reviewArtifacts(input: ReviewInput): ReviewPacket {
@@ -86,6 +88,7 @@ export function reviewArtifacts(input: ReviewInput): ReviewPacket {
     scopeJustifications,
     mcpToolReviews,
     recommendedActions: dedupeActions(recommendedActions),
+    policyContext: input.policyContext ?? [],
     generatedArtifacts: [
       {
         type: "admin_approval_brief",

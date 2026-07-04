@@ -72,6 +72,16 @@ export interface GeneratedArtifact {
   content: string | Record<string, unknown> | unknown[];
 }
 
+export interface PolicyContext {
+  id: string;
+  title: string;
+  source: string;
+  sourceUrl?: string;
+  similarity?: number;
+  excerpt: string;
+  tags?: string[];
+}
+
 export interface ReviewPacket {
   packetVersion: "phase1";
   reviewId: string;
@@ -89,6 +99,7 @@ export interface ReviewPacket {
   scopeJustifications?: ScopeJustification[];
   mcpToolReviews?: McpToolReview[];
   recommendedActions: RecommendedAction[];
+  policyContext?: PolicyContext[];
   generatedArtifacts?: GeneratedArtifact[];
   evalTrace?: {
     fixtureIds?: string[];

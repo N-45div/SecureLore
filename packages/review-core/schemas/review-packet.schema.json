@@ -98,6 +98,12 @@
         "$ref": "#/$defs/recommendedAction"
       }
     },
+    "policyContext": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/policyContext"
+      }
+    },
     "generatedArtifacts": {
       "type": "array",
       "items": {
@@ -234,6 +240,37 @@
         },
         "recommendedMetadata": {
           "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "policyContext": {
+      "type": "object",
+      "required": ["id", "title", "source", "excerpt"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "sourceUrl": {
+          "type": "string"
+        },
+        "similarity": {
+          "type": "number"
+        },
+        "excerpt": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       },
       "additionalProperties": false

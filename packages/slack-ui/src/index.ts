@@ -43,6 +43,19 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
     }
   ];
 
+  if (packet.policyContext && packet.policyContext.length > 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Policy memory used*\n${packet.policyContext
+          .slice(0, 3)
+          .map((policy) => `• ${policy.title} (${policy.id})`)
+          .join("\n")}`
+      }
+    });
+  }
+
   if (topFindings.length > 0) {
     blocks.push({
       type: "section",

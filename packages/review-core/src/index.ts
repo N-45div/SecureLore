@@ -6,6 +6,7 @@ export type {
   GeneratedArtifact,
   McpToolReview,
   McpToolsListLike,
+  PolicyContext,
   RecommendedAction,
   ReviewPacket,
   ScopeJustification,

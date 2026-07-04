@@ -13,7 +13,8 @@
     "smoke:slack-form": "npm run smoke:form --workspace @securelore/slack",
     "db:schema:apply": "npm run schema:apply --workspace @securelore/memory",
     "db:seed:policies": "npm run seed:policies --workspace @securelore/memory",
-    "smoke:retrieve": "npm run smoke:retrieve --workspace @securelore/memory"
+    "smoke:retrieve": "npm run smoke:retrieve --workspace @securelore/memory",
+    "smoke:slack-policy": "npm run smoke:policy --workspace @securelore/slack"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",

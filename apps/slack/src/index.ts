@@ -2,7 +2,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { App } from "@slack/bolt";
 import { renderReviewPacket } from "@securelore/slack-ui";
-import { runReviewFromForm } from "./input.js";
+import { buildPolicyQueryFromForm, runReviewFromForm } from "./input.js";
+import { createPolicyContextProvider } from "./policy-context.js";
 import { LocalStore } from "./storage/local-store.js";
 import { ReviewStore } from "./storage/review-store.js";
 
@@ -13,6 +14,7 @@ const store = new ReviewStore({
   local: new LocalStore(join(repoRoot, ".data/slack")),
   databaseUrl: process.env.DATABASE_URL
 });
+const policyContextProvider = createPolicyContextProvider(process.env);
 
 const app = new App({
   token: process.env.SLACK_BOT_TOKEN,
@@ -44,7 +46,10 @@ app.view("securelore_review_submit", async ({ ack, body, view, client }) => {
   const mcpToolsJson = view.state.values.mcp_tools_block?.mcp_tools_json?.value ?? "";
 
   try {
-    const packet = runReviewFromForm({ manifestJson, mcpToolsJson });
+    const policyContext = await policyContextProvider.retrieve(
+      buildPolicyQueryFromForm({ manifestJson, mcpToolsJson })
+    );
+    const packet = runReviewFromForm({ manifestJson, mcpToolsJson, policyContext });
     await store.saveReview(packet, {
       slackTeamId: body.team?.id,
       slackUserId: body.user.id

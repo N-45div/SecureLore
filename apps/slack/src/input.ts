@@ -1,9 +1,15 @@
 import { reviewArtifacts } from "@securelore/review-core";
-import type { McpToolsListLike, ReviewPacket, SlackManifestLike } from "@securelore/review-core";
+import type {
+  McpToolsListLike,
+  PolicyContext,
+  ReviewPacket,
+  SlackManifestLike
+} from "@securelore/review-core";
 
 export interface SlackReviewFormInput {
   manifestJson?: string;
   mcpToolsJson?: string;
+  policyContext?: PolicyContext[];
 }
 
 export function runReviewFromForm(input: SlackReviewFormInput): ReviewPacket {
@@ -18,7 +24,17 @@ export function runReviewFromForm(input: SlackReviewFormInput): ReviewPacket {
     throw new Error("Paste a Slack manifest, MCP tools/list response, or both.");
   }
 
-  return reviewArtifacts({ manifest, mcpTools });
+  return reviewArtifacts({ manifest, mcpTools, policyContext: input.policyContext });
+}
+
+export function buildPolicyQueryFromForm(input: SlackReviewFormInput): string {
+  const parts = [
+    "Review Slack app and MCP tool safety.",
+    input.manifestJson?.slice(0, 4000),
+    input.mcpToolsJson?.slice(0, 4000)
+  ].filter(Boolean);
+
+  return parts.join("\n\n");
 }
 
 function parseJson(value: string, label: string): unknown {
