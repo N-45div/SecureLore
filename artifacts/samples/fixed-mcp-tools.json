@@ -1,0 +1,65 @@
+{
+  "tools": [
+    {
+      "name": "create_support_ticket_draft",
+      "title": "Create support ticket draft",
+      "description": "Creates a draft support ticket from the user's issue description. The user must confirm before the ticket is submitted.",
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueSummary": {
+            "type": "string",
+            "description": "Short summary of the user's support issue."
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["low", "normal", "urgent"]
+          }
+        },
+        "required": ["issueSummary"]
+      }
+    },
+    {
+      "name": "get_user_ticket_status",
+      "title": "Get user ticket status",
+      "description": "Returns open support ticket statuses for the requesting user only.",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "requestingUserId": {
+            "type": "string",
+            "description": "Slack user ID for the user requesting ticket status."
+          }
+        },
+        "required": ["requestingUserId"]
+      }
+    },
+    {
+      "name": "archive_support_ticket",
+      "title": "Archive support ticket",
+      "description": "Archives a support ticket after explicit user confirmation and only if the requester owns the ticket.",
+      "annotations": {
+        "readOnlyHint": false
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          },
+          "confirmedByUser": {
+            "type": "boolean",
+            "description": "Must be true only after the user confirms the archive action in Slack."
+          }
+        },
+        "required": ["ticketId", "confirmedByUser"]
+      }
+    }
+  ]
+}

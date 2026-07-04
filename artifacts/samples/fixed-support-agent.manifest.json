@@ -1,0 +1,66 @@
+{
+  "display_information": {
+    "name": "Casey Support Assistant",
+    "description": "Help employees file and track support requests"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "Casey",
+      "always_online": false
+    },
+    "slash_commands": [
+      {
+        "command": "/casey-help",
+        "url": "https://casey.example.com/slack/commands",
+        "description": "File or check a support request",
+        "usage_hint": "describe your issue"
+      }
+    ],
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "commands",
+        "chat:write",
+        "im:history"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://casey.example.com/slack/events",
+      "bot_events": [
+        "app_mention",
+        "message.im"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://casey.example.com/slack/actions"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": true
+  },
+  "securelore_declared_features": [
+    "Answer direct employee support questions",
+    "Create support ticket drafts after user confirmation",
+    "Show support request status in App Home"
+  ],
+  "securelore_public_pages": {
+    "landing_page_url": "https://casey.example.com/slack",
+    "privacy_policy_url": "https://casey.example.com/privacy",
+    "support_page_url": "https://casey.example.com/support"
+  },
+  "securelore_ai_disclosure": {
+    "model": "OpenAI or Anthropic model configured by workspace admin",
+    "retention": "Prompts and responses are retained for 30 days for support debugging unless disabled by an admin.",
+    "training_use": "Slack customer data is not used to train foundation models."
+  }
+}

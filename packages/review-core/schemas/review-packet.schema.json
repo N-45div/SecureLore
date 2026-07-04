@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://securelore.dev/schemas/review-packet.schema.json",
+  "title": "SecureLoreReviewPacket",
+  "type": "object",
+  "required": [
+    "packetVersion",
+    "reviewId",
+    "createdAt",
+    "inputSummary",
+    "overallRisk",
+    "findings",
+    "recommendedActions"
+  ],
+  "properties": {
+    "packetVersion": {
+      "type": "string",
+      "const": "phase1"
+    },
+    "reviewId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "inputSummary": {
+      "type": "object",
+      "required": ["artifactTypes", "declaredFeatures"],
+      "properties": {
+        "artifactTypes": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "slack_manifest",
+              "oauth_scopes",
+              "mcp_tools",
+              "landing_page",
+              "privacy_policy",
+              "support_page",
+              "marketplace_description",
+              "repo",
+              "demo_transcript"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "declaredFeatures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "missingArtifacts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "overallRisk": {
+      "type": "object",
+      "required": ["grade", "summary"],
+      "properties": {
+        "grade": {
+          "enum": ["low", "medium", "high", "reject"]
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    },
+    "scopeJustifications": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scopeJustification"
+      }
+    },
+    "mcpToolReviews": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mcpToolReview"
+      }
+    },
+    "recommendedActions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/recommendedAction"
+      }
+    },
+    "generatedArtifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/generatedArtifact"
+      }
+    },
+    "evalTrace": {
+      "type": "object",
+      "properties": {
+        "fixtureIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "status"],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "enum": ["pass", "fail", "not_run"]
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": [
+        "id",
+        "severity",
+        "category",
+        "title",
+        "description",
+        "confidence",
+        "fixability"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": ["pass", "info", "warn", "blocker"]
+        },
+        "category": {
+          "enum": [
+            "oauth_scope_risk",
+            "mcp_tool_safety",
+            "marketplace_readiness",
+            "ai_disclosure",
+            "slack_privacy_model",
+            "ux_admin_trust",
+            "deployment_security"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "policyCitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "confidence": {
+          "enum": ["low", "medium", "high"]
+        },
+        "fixability": {
+          "enum": ["manual", "automatic", "needs_clarification"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "scopeJustification": {
+      "type": "object",
+      "required": ["scope", "status", "declaredUse", "recommendation"],
+      "properties": {
+        "scope": {
+          "type": "string"
+        },
+        "status": {
+          "enum": ["justified", "overbroad", "missing_evidence", "remove"]
+        },
+        "declaredUse": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "mcpToolReview": {
+      "type": "object",
+      "required": ["toolName", "classification", "readOnlyHintStatus", "issues"],
+      "properties": {
+        "toolName": {
+          "type": "string"
+        },
+        "classification": {
+          "enum": ["read", "write", "ambiguous"]
+        },
+        "readOnlyHintStatus": {
+          "enum": ["present_valid", "present_invalid", "missing", "not_applicable"]
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommendedMetadata": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    "recommendedAction": {
+      "type": "object",
+      "required": ["id", "label", "priority", "description"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "priority": {
+          "enum": ["now", "before_submission", "before_marketplace", "later"]
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "generatedArtifact": {
+      "type": "object",
+      "required": ["type", "title", "content"],
+      "properties": {
+        "type": {
+          "enum": [
+            "manifest_diff",
+            "fixed_manifest",
+            "scope_justification_table",
+            "marketplace_notes",
+            "privacy_disclosure",
+            "ai_disclosure",
+            "admin_approval_brief",
+            "mcp_tool_metadata"
+          ]
+        },
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": ["string", "object", "array"]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

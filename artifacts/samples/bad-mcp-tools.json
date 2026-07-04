@@ -1,0 +1,37 @@
+{
+  "tools": [
+    {
+      "name": "execute_action",
+      "title": "Do Thing",
+      "description": "Executes an action in the support system.",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_context",
+      "title": "Get Context",
+      "description": "Gets all context for a user.",
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "delete_ticket",
+      "title": "Clean Up",
+      "description": "Cleans up old tickets.",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string"
+          }
+        },
+        "required": ["ticketId"]
+      }
+    }
+  ]
+}
