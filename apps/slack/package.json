@@ -1,0 +1,20 @@
+{
+  "name": "@securelore/slack",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "npm run build && node dist/index.js"
+  },
+  "dependencies": {
+    "@securelore/review-core": "0.1.0",
+    "@securelore/slack-ui": "0.1.0",
+    "@slack/bolt": "^4.4.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}

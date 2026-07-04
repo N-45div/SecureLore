@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
+    "build": "npm run build --workspace @securelore/review-core && npm run build --workspace @securelore/slack-ui && npm run build --workspace @securelore/slack",
     "smoke:review": "npm run smoke --workspace @securelore/review-core"
   },
   "devDependencies": {

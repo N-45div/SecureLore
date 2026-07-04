@@ -1,0 +1,49 @@
+{
+  "display_information": {
+    "name": "SecureLore",
+    "description": "Preflight reviews for Slack agents and MCP tools"
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "SecureLore",
+      "always_online": false
+    },
+    "slash_commands": [
+      {
+        "command": "/securelore",
+        "url": "https://securelore.example.com/slack/commands",
+        "description": "Review a Slack agent or MCP tool",
+        "usage_hint": "review"
+      }
+    ],
+    "app_home": {
+      "home_tab_enabled": true,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "chat:write",
+        "commands"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://securelore.example.com/slack/events",
+      "bot_events": [
+        "app_mention"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://securelore.example.com/slack/actions"
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": true
+  }
+}
