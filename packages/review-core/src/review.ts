@@ -94,6 +94,22 @@ export function reviewArtifacts(input: ReviewInput): ReviewPacket {
         type: "admin_approval_brief",
         title: "Admin approval brief",
         content: generateAdminBrief(grade, findings)
+      },
+      {
+        type: "scope_justification_table",
+        title: "Scope justification table",
+        content: scopeJustifications
+      },
+      {
+        type: "mcp_tool_metadata",
+        title: "MCP metadata recommendations",
+        content: mcpToolReviews.map((review) => ({
+          toolName: review.toolName,
+          classification: review.classification,
+          readOnlyHintStatus: review.readOnlyHintStatus,
+          issues: review.issues,
+          recommendedMetadata: review.recommendedMetadata
+        }))
       }
     ],
     evalTrace: {

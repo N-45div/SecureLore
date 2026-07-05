@@ -32,6 +32,15 @@ export class LocalStore {
     );
   }
 
+  async getReview(reviewId: string): Promise<ReviewPacket | null> {
+    try {
+      const raw = await readFile(join(this.dataDir, "reviews", `${reviewId}.json`), "utf8");
+      return JSON.parse(raw) as ReviewPacket;
+    } catch {
+      return null;
+    }
+  }
+
   async listRecentReviews(limit = 10): Promise<ReviewSummary[]> {
     const reviewsDir = join(this.dataDir, "reviews");
     let filenames: string[];

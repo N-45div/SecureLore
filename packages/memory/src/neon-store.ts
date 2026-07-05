@@ -6,6 +6,7 @@ import type {
   ReviewPersistenceInput,
   ReviewSummary
 } from "./types.js";
+import type { ReviewPacket } from "@securelore/review-core";
 import { vectorLiteral } from "./vector.js";
 
 export class NeonMemoryStore {
@@ -102,6 +103,18 @@ export class NeonMemoryStore {
         ${input.slackChannelId ?? null}
       )
     `;
+  }
+
+  async getReview(reviewId: string): Promise<ReviewPacket | null> {
+    const rows = await this.sql`
+      SELECT packet
+      FROM review_sessions
+      WHERE id = ${reviewId}
+      LIMIT 1
+    `;
+
+    if (rows.length === 0) return null;
+    return rows[0].packet as ReviewPacket;
   }
 
   async listRecentReviews(options?: {

@@ -10,6 +10,7 @@
   "scripts": {
     "build": "npm run build --workspace @securelore/review-core && npm run build --workspace @securelore/memory && npm run build --workspace @securelore/slack-ui && npm run build --workspace @securelore/slack",
     "smoke:review": "npm run smoke --workspace @securelore/review-core",
+    "smoke:slack-artifacts": "npm run smoke:artifacts --workspace @securelore/slack",
     "smoke:slack-form": "npm run smoke:form --workspace @securelore/slack",
     "smoke:slack-home": "npm run smoke:home --workspace @securelore/slack",
     "db:schema:apply": "npm run schema:apply --workspace @securelore/memory",

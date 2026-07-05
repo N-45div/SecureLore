@@ -1,4 +1,4 @@
-import type { ReviewPacket, Severity } from "@securelore/review-core";
+import type { GeneratedArtifact, ReviewPacket, Severity } from "@securelore/review-core";
 
 export interface SlackBlock {
   type: string;
@@ -101,6 +101,39 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
         type: "button",
         text: {
           type: "plain_text",
+          text: "Admin brief"
+        },
+        value: packet.reviewId,
+        action_id: "artifact_admin_brief"
+      },
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Scope table"
+        },
+        value: packet.reviewId,
+        action_id: "artifact_scope_table"
+      },
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "MCP metadata"
+        },
+        value: packet.reviewId,
+        action_id: "artifact_mcp_metadata"
+      }
+    ]
+  });
+
+  blocks.push({
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
           text: "Good fix"
         },
         value: packet.reviewId,
@@ -137,6 +170,34 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
   });
 
   return blocks;
+}
+
+export function renderGeneratedArtifact(packet: ReviewPacket, artifact: GeneratedArtifact): SlackBlock[] {
+  return [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: artifact.title.slice(0, 150)
+      }
+    },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `Review ${packet.reviewId} - ${packet.overallRisk.grade.toUpperCase()}`
+        }
+      ]
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: formatArtifactContent(artifact)
+      }
+    }
+  ];
 }
 
 export function renderAppHome(reviews: ReviewHomeSummary[]): SlackBlock[] {
@@ -222,4 +283,52 @@ function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toISOString().slice(0, 16).replace("T", " ");
+}
+
+function formatArtifactContent(artifact: GeneratedArtifact): string {
+  if (typeof artifact.content === "string") {
+    return truncateForSlack(artifact.content);
+  }
+
+  if (artifact.type === "scope_justification_table" && Array.isArray(artifact.content)) {
+    const rows = artifact.content
+      .slice(0, 20)
+      .map((row) => {
+        const value = row as {
+          scope?: string;
+          status?: string;
+          recommendation?: string;
+        };
+        return `• *${value.scope ?? "unknown"}* - ${value.status ?? "unknown"}\n${value.recommendation ?? ""}`;
+      })
+      .join("\n");
+    return truncateForSlack(rows || "No scope rows were generated.");
+  }
+
+  if (artifact.type === "mcp_tool_metadata" && Array.isArray(artifact.content)) {
+    const rows = artifact.content
+      .slice(0, 15)
+      .map((row) => {
+        const value = row as {
+          toolName?: string;
+          classification?: string;
+          readOnlyHintStatus?: string;
+          issues?: string[];
+        };
+        return [
+          `• *${value.toolName ?? "unknown"}* - ${value.classification ?? "unknown"}`,
+          `readOnlyHint: ${value.readOnlyHintStatus ?? "unknown"}`,
+          value.issues?.length ? `issues: ${value.issues.join("; ")}` : "issues: none"
+        ].join("\n");
+      })
+      .join("\n");
+    return truncateForSlack(rows || "No MCP metadata recommendations were generated.");
+  }
+
+  return truncateForSlack(`\`\`\`${JSON.stringify(artifact.content, null, 2)}\`\`\``);
+}
+
+function truncateForSlack(value: string): string {
+  if (value.length <= 2800) return value;
+  return `${value.slice(0, 2790)}...`;
 }

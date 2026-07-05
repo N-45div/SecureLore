@@ -1,7 +1,12 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { App } from "@slack/bolt";
-import { renderAppHome, renderReviewPacket } from "@securelore/slack-ui";
+import {
+  renderAppHome,
+  renderGeneratedArtifact,
+  renderReviewPacket
+} from "@securelore/slack-ui";
+import type { GeneratedArtifact } from "@securelore/review-core";
 import { buildPolicyQueryFromForm, runReviewFromForm } from "./input.js";
 import { createPolicyContextProvider } from "./policy-context.js";
 import { LocalStore } from "./storage/local-store.js";
@@ -115,6 +120,48 @@ for (const actionId of [
   });
 }
 
+for (const action of [
+  { id: "artifact_admin_brief", type: "admin_approval_brief" },
+  { id: "artifact_scope_table", type: "scope_justification_table" },
+  { id: "artifact_mcp_metadata", type: "mcp_tool_metadata" }
+] as const) {
+  app.action(action.id, async ({ ack, body, client }) => {
+    await ack();
+    if (body.type !== "block_actions") return;
+    const reviewId = getActionValue(body.actions[0]);
+    const packet = await store.getReview(reviewId);
+
+    if (!packet) {
+      await client.chat.postEphemeral({
+        channel: body.channel?.id ?? "",
+        user: body.user.id,
+        text: "Review packet was not found. Run the review again."
+      });
+      return;
+    }
+
+    const artifact = packet.generatedArtifacts?.find(
+      (candidate) => candidate.type === action.type
+    );
+
+    if (!artifact) {
+      await client.chat.postEphemeral({
+        channel: body.channel?.id ?? "",
+        user: body.user.id,
+        text: "That artifact was not generated for this review."
+      });
+      return;
+    }
+
+    await client.chat.postEphemeral({
+      channel: body.channel?.id ?? "",
+      user: body.user.id,
+      text: artifact.title,
+      blocks: renderGeneratedArtifact(packet, artifact as GeneratedArtifact)
+    });
+  });
+}
+
 app.action("home_refresh", async ({ ack, body, client, context }) => {
   await ack();
   if (body.type !== "block_actions") return;
@@ -149,6 +196,19 @@ app.event("app_mention", async ({ event, say }) => {
 
   await say("Run `/securelore review` to paste a real Slack manifest or MCP tools/list response.");
 });
+
+function getActionValue(action: unknown): string {
+  if (
+    action &&
+    typeof action === "object" &&
+    "value" in action &&
+    typeof action.value === "string"
+  ) {
+    return action.value;
+  }
+
+  return "unknown";
+}
 
 function reviewModal() {
   return {

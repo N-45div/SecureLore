@@ -39,6 +39,15 @@ export class ReviewStore {
     }
   }
 
+  async getReview(reviewId: string): Promise<ReviewPacket | null> {
+    if (this.neon) {
+      const packet = await this.neon.getReview(reviewId);
+      if (packet) return packet;
+    }
+
+    return this.local.getReview(reviewId);
+  }
+
   async listRecentReviews(options?: {
     slackTeamId?: string;
     slackUserId?: string;
