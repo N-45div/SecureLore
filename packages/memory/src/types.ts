@@ -26,3 +26,13 @@ export interface FeedbackPersistenceInput {
   slackUserId?: string;
   slackChannelId?: string;
 }
+
+export interface ReviewSummary {
+  id: string;
+  grade: string;
+  summary: string;
+  blockerCount: number;
+  warningCount: number;
+  artifactTypes: string[];
+  createdAt: string;
+}

@@ -7,5 +7,6 @@ export type {
   FeedbackPersistenceInput,
   PolicyChunk,
   RetrievedPolicyChunk,
-  ReviewPersistenceInput
+  ReviewPersistenceInput,
+  ReviewSummary
 } from "./types.js";

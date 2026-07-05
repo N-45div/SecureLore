@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "npm run build && node dist/index.js",
     "smoke:form": "npm run build && node dist/scripts/smoke-form-review.js",
+    "smoke:home": "npm run build && node dist/scripts/smoke-home.js",
     "smoke:policy": "npm run build && node dist/scripts/smoke-policy-context.js"
   },
   "dependencies": {

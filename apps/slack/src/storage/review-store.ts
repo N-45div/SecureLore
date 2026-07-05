@@ -1,5 +1,5 @@
 import type { ReviewPacket } from "@securelore/review-core";
-import { NeonMemoryStore } from "@securelore/memory";
+import { NeonMemoryStore, type ReviewSummary } from "@securelore/memory";
 import { LocalStore, type FeedbackEvent } from "./local-store.js";
 
 export class ReviewStore {
@@ -37,5 +37,17 @@ export class ReviewStore {
         slackChannelId: event.channelId
       });
     }
+  }
+
+  async listRecentReviews(options?: {
+    slackTeamId?: string;
+    slackUserId?: string;
+    limit?: number;
+  }): Promise<ReviewSummary[]> {
+    if (this.neon) {
+      return this.neon.listRecentReviews(options);
+    }
+
+    return this.local.listRecentReviews(options?.limit);
   }
 }

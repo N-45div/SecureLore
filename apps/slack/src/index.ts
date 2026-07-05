@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { App } from "@slack/bolt";
-import { renderReviewPacket } from "@securelore/slack-ui";
+import { renderAppHome, renderReviewPacket } from "@securelore/slack-ui";
 import { buildPolicyQueryFromForm, runReviewFromForm } from "./input.js";
 import { createPolicyContextProvider } from "./policy-context.js";
 import { LocalStore } from "./storage/local-store.js";
@@ -37,6 +37,21 @@ app.command("/securelore", async ({ command, ack, respond }) => {
   await app.client.views.open({
     trigger_id: command.trigger_id,
     view: reviewModal()
+  });
+});
+
+app.event("app_home_opened", async ({ event, client, context }) => {
+  const reviews = await store.listRecentReviews({
+    slackTeamId: context.teamId,
+    slackUserId: event.user,
+    limit: 10
+  });
+  await client.views.publish({
+    user_id: event.user,
+    view: {
+      type: "home",
+      blocks: renderAppHome(reviews)
+    }
   });
 });
 
@@ -99,6 +114,32 @@ for (const actionId of [
     });
   });
 }
+
+app.action("home_refresh", async ({ ack, body, client, context }) => {
+  await ack();
+  if (body.type !== "block_actions") return;
+  const reviews = await store.listRecentReviews({
+    slackTeamId: context.teamId,
+    slackUserId: body.user.id,
+    limit: 10
+  });
+  await client.views.publish({
+    user_id: body.user.id,
+    view: {
+      type: "home",
+      blocks: renderAppHome(reviews)
+    }
+  });
+});
+
+app.action("home_new_review", async ({ ack, body, client }) => {
+  await ack();
+  if (body.type !== "block_actions" || !body.trigger_id) return;
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: reviewModal()
+  });
+});
 
 app.event("app_mention", async ({ event, say }) => {
   if (!("text" in event) || !event.text?.toLowerCase().includes("review")) {

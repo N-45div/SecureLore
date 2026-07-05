@@ -3,7 +3,8 @@ import type {
   FeedbackPersistenceInput,
   PolicyChunk,
   RetrievedPolicyChunk,
-  ReviewPersistenceInput
+  ReviewPersistenceInput,
+  ReviewSummary
 } from "./types.js";
 import { vectorLiteral } from "./vector.js";
 
@@ -101,5 +102,43 @@ export class NeonMemoryStore {
         ${input.slackChannelId ?? null}
       )
     `;
+  }
+
+  async listRecentReviews(options?: {
+    slackTeamId?: string;
+    slackUserId?: string;
+    limit?: number;
+  }): Promise<ReviewSummary[]> {
+    const limit = options?.limit ?? 10;
+    const rows = await this.sql`
+      SELECT
+        id,
+        grade,
+        summary,
+        packet,
+        created_at
+      FROM review_sessions
+      WHERE (${options?.slackTeamId ?? null}::text IS NULL OR slack_team_id = ${options?.slackTeamId ?? null})
+        AND (${options?.slackUserId ?? null}::text IS NULL OR slack_user_id = ${options?.slackUserId ?? null})
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `;
+
+    return rows.map((row) => {
+      const packet = row.packet as {
+        findings?: Array<{ severity?: string }>;
+        inputSummary?: { artifactTypes?: string[] };
+      };
+      const findings = packet.findings ?? [];
+      return {
+        id: String(row.id),
+        grade: String(row.grade),
+        summary: String(row.summary),
+        blockerCount: findings.filter((finding) => finding.severity === "blocker").length,
+        warningCount: findings.filter((finding) => finding.severity === "warn").length,
+        artifactTypes: packet.inputSummary?.artifactTypes ?? [],
+        createdAt: new Date(String(row.created_at)).toISOString()
+      };
+    });
   }
 }

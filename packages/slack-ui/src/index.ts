@@ -5,6 +5,16 @@ export interface SlackBlock {
   [key: string]: unknown;
 }
 
+export interface ReviewHomeSummary {
+  id: string;
+  grade: string;
+  summary: string;
+  blockerCount: number;
+  warningCount: number;
+  artifactTypes: string[];
+  createdAt: string;
+}
+
 const SEVERITY_LABEL: Record<Severity, string> = {
   pass: "PASS",
   info: "INFO",
@@ -127,4 +137,89 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
   });
 
   return blocks;
+}
+
+export function renderAppHome(reviews: ReviewHomeSummary[]): SlackBlock[] {
+  const blocks: SlackBlock[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: "SecureLore"
+      }
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*Slack agent and MCP preflight reviews*"
+      }
+    },
+    {
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Run new review"
+          },
+          action_id: "home_new_review"
+        },
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Refresh"
+          },
+          action_id: "home_refresh"
+        }
+      ]
+    },
+    {
+      type: "divider"
+    }
+  ];
+
+  if (reviews.length === 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "No reviews yet. Run `/securelore review` to review a Slack manifest or MCP tools/list response."
+      }
+    });
+    return blocks;
+  }
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: "*Recent reviews*"
+    }
+  });
+
+  for (const review of reviews.slice(0, 10)) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: [
+          `*${review.grade.toUpperCase()}* - ${formatDate(review.createdAt)}`,
+          `${review.blockerCount} blocker(s), ${review.warningCount} warning(s)`,
+          `Artifacts: ${review.artifactTypes.join(", ") || "none"}`,
+          `_${review.summary}_`
+        ].join("\n")
+      }
+    });
+  }
+
+  return blocks;
+}
+
+function formatDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toISOString().slice(0, 16).replace("T", " ");
 }
