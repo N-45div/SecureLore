@@ -7,6 +7,11 @@ import {
   renderReviewPacket
 } from "@securelore/slack-ui";
 import type { GeneratedArtifact } from "@securelore/review-core";
+import {
+  classifySlackFileJson,
+  downloadSlackFileJson,
+  type SlackFileInfo
+} from "./file-ingestion.js";
 import { buildPolicyQueryFromForm, runReviewFromForm } from "./input.js";
 import { createPolicyContextProvider } from "./policy-context.js";
 import { LocalStore } from "./storage/local-store.js";
@@ -58,6 +63,47 @@ app.event("app_home_opened", async ({ event, client, context }) => {
       blocks: renderAppHome(reviews)
     }
   });
+});
+
+app.event("file_shared", async ({ event, client, context }) => {
+  const botToken = process.env.SLACK_BOT_TOKEN;
+  if (!botToken) return;
+
+  try {
+    const fileResponse = await client.files.info({
+      file: event.file_id
+    });
+    const file = fileResponse.file as SlackFileInfo | undefined;
+    if (!file) {
+      throw new Error("Slack file metadata was not returned.");
+    }
+
+    const rawJson = await downloadSlackFileJson(file, botToken);
+    const classified = classifySlackFileJson(rawJson);
+    const policyContext = await policyContextProvider.retrieve(
+      buildPolicyQueryFromForm(classified)
+    );
+    const packet = runReviewFromForm({ ...classified, policyContext });
+
+    await store.saveReview(packet, {
+      slackTeamId: context.teamId,
+      slackChannelId: event.channel_id,
+      slackUserId: event.user_id
+    });
+
+    await client.chat.postMessage({
+      channel: event.channel_id,
+      text: packet.overallRisk.summary,
+      blocks: renderReviewPacket(packet)
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "File review failed.";
+    await client.chat.postEphemeral({
+      channel: event.channel_id,
+      user: event.user_id,
+      text: `SecureLore could not review that file: ${message}`
+    });
+  }
 });
 
 app.view("securelore_review_submit", async ({ ack, body, view, client }) => {

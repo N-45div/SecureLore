@@ -27,7 +27,8 @@
       "bot": [
         "app_mentions:read",
         "chat:write",
-        "commands"
+        "commands",
+        "files:read"
       ]
     }
   },
@@ -35,7 +36,8 @@
     "event_subscriptions": {
       "request_url": "https://securelore.example.com/slack/events",
       "bot_events": [
-        "app_mention"
+        "app_mention",
+        "file_shared"
       ]
     },
     "interactivity": {
