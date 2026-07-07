@@ -51,6 +51,7 @@ Internal planning docs live in `.internal/` and are intentionally ignored.
 
 SecureLore is deployment-ready for Vercel HTTP endpoints:
 
+- `/`
 - `/api/health`
 - `/api/slack/events`
 - `/api/slack/commands`
