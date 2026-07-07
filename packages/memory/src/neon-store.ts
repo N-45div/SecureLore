@@ -51,7 +51,7 @@ export class NeonMemoryStore {
         1 - (embedding <=> ${vectorLiteral(queryEmbedding)}::vector) AS similarity
       FROM policy_chunks
       WHERE embedding IS NOT NULL
-      ORDER BY embedding <=> ${vectorLiteral(queryEmbedding)}::vector
+      ORDER BY ((embedding <=> ${vectorLiteral(queryEmbedding)}::vector) + 0)
       LIMIT ${limit}
     `;
 
