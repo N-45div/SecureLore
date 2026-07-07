@@ -183,6 +183,90 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
         },
         value: packet.reviewId,
         action_id: "feedback_false_alarm"
+      },
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Add evidence"
+        },
+        value: packet.reviewId,
+        action_id: "room_add_evidence"
+      }
+    ]
+  });
+
+  return blocks;
+}
+
+export function renderReviewRoom(packet: ReviewPacket, evidenceCount = 0): SlackBlock[] {
+  const evidenceQuestions = packet.findings
+    .filter((finding) => finding.fixability === "needs_clarification")
+    .slice(0, 4);
+  const blockers = packet.findings.filter((finding) => finding.severity === "blocker").length;
+  const warnings = packet.findings.filter((finding) => finding.severity === "warn").length;
+
+  const blocks: SlackBlock[] = [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: "SecureLore Review Room"
+      }
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: [
+          `*Status:* ${packet.overallRisk.grade === "low" ? "Ready for admin" : "Needs evidence"}`,
+          `*Risk:* ${packet.overallRisk.grade.toUpperCase()} (${blockers} blocker(s), ${warnings} warning(s))`,
+          `*Evidence captured:* ${evidenceCount}`
+        ].join("\n")
+      }
+    }
+  ];
+
+  if (evidenceQuestions.length > 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Evidence questions*\n${evidenceQuestions
+          .map((finding) => `• *${finding.title}*\n${finding.description}`)
+          .join("\n")}`
+      }
+    });
+  } else {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "No clarification questions are open. Use the generated artifacts for admin approval."
+      }
+    });
+  }
+
+  blocks.push({
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Add evidence"
+        },
+        value: packet.reviewId,
+        action_id: "room_add_evidence"
+      },
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Admin brief"
+        },
+        value: packet.reviewId,
+        action_id: "artifact_admin_brief"
       }
     ]
   });

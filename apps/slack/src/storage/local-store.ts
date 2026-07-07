@@ -11,6 +11,14 @@ export interface FeedbackEvent {
   createdAt: string;
 }
 
+export interface ReviewEvidenceEvent {
+  reviewId: string;
+  questionId?: string;
+  evidence: string;
+  userId?: string;
+  createdAt: string;
+}
+
 export class LocalStore {
   constructor(private readonly dataDir: string) {}
 
@@ -27,6 +35,15 @@ export class LocalStore {
     await mkdir(this.dataDir, { recursive: true });
     await appendFile(
       join(this.dataDir, "feedback.jsonl"),
+      `${JSON.stringify(event)}\n`,
+      "utf8"
+    );
+  }
+
+  async appendReviewEvidence(event: ReviewEvidenceEvent): Promise<void> {
+    await mkdir(this.dataDir, { recursive: true });
+    await appendFile(
+      join(this.dataDir, "review-evidence.jsonl"),
       `${JSON.stringify(event)}\n`,
       "utf8"
     );

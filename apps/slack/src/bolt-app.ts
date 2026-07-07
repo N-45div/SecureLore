@@ -6,9 +6,10 @@ import { enrichReviewPacket } from "@securelore/agent-core";
 import {
   renderAppHome,
   renderGeneratedArtifact,
-  renderReviewPacket
+  renderReviewPacket,
+  renderReviewRoom
 } from "@securelore/slack-ui";
-import type { GeneratedArtifact } from "@securelore/review-core";
+import type { GeneratedArtifact, ReviewPacket } from "@securelore/review-core";
 import {
   classifySlackFileJson,
   downloadSlackFileJson,
@@ -107,6 +108,13 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         text: packet.overallRisk.summary,
         blocks: renderReviewPacket(packet)
       });
+      await postReviewRoom({
+        client,
+        channel: event.channel_id,
+        packet,
+        store,
+        logger
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "File review failed.";
       await client.chat.postEphemeral({
@@ -187,6 +195,13 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         logger("modal_review_posted", {
           reviewId: packet.reviewId,
           userId: body.user.id
+        });
+        await postReviewRoom({
+          client,
+          channel: body.user.id,
+          packet,
+          store,
+          logger
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Review failed.";
@@ -301,6 +316,97 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     });
   }
 
+  app.action("room_add_evidence", async ({ ack, body, client }) => {
+    await ack();
+    if (body.type !== "block_actions" || !body.trigger_id) return;
+    const reviewId = getActionValue(body.actions[0]);
+
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: evidenceModal(reviewId)
+    });
+  });
+
+  app.view("securelore_evidence_submit", async ({ ack, body, view, client }) => {
+    const reviewId = view.private_metadata;
+    const evidence =
+      view.state.values.evidence_block?.evidence_text?.value?.trim() ?? "";
+
+    if (!reviewId || reviewId === "unknown") {
+      await ack({
+        response_action: "errors",
+        errors: {
+          evidence_block: "Review ID was missing. Run a new SecureLore review."
+        }
+      });
+      return;
+    }
+
+    if (!evidence) {
+      await ack({
+        response_action: "errors",
+        errors: {
+          evidence_block: "Add the evidence, justification, or follow-up answer to save."
+        }
+      });
+      return;
+    }
+
+    await ack();
+
+    const evidenceWork = (async () => {
+      try {
+        await store.appendReviewEvidence({
+          reviewId,
+          evidence,
+          userId: body.user.id,
+          createdAt: new Date().toISOString()
+        });
+        logger("review_evidence_saved", {
+          reviewId,
+          userId: body.user.id
+        });
+
+        const packet = await store.getReview(reviewId);
+        if (!packet) {
+          await client.chat.postMessage({
+            channel: body.user.id,
+            text: `Evidence captured for ${reviewId}, but the review packet was not found.`
+          });
+          return;
+        }
+
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: `Evidence captured for ${reviewId}.`
+        });
+        await postReviewRoom({
+          client,
+          channel: body.user.id,
+          packet,
+          store,
+          logger
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Evidence save failed.";
+        logger("review_evidence_failed", {
+          reviewId,
+          message
+        });
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: `SecureLore could not save that evidence: ${message}`
+        });
+      }
+    })();
+
+    if (isVercel) {
+      waitUntil(evidenceWork);
+    } else {
+      void evidenceWork;
+    }
+  });
+
   app.action("home_refresh", async ({ ack, body, client, context }) => {
     await ack();
     if (body.type !== "block_actions") return;
@@ -368,6 +474,26 @@ function getResponseChannel(body: { channel?: { id?: string }; user: { id: strin
   return body.channel?.id || body.user.id;
 }
 
+async function postReviewRoom(options: {
+  client: App["client"];
+  channel: string;
+  packet: ReviewPacket;
+  store: ReviewStore;
+  logger: ReturnType<typeof createRuntimeLogger>;
+}): Promise<void> {
+  const evidenceCount = await options.store.countReviewEvidence(options.packet.reviewId);
+  await options.client.chat.postMessage({
+    channel: options.channel,
+    text: `SecureLore review room for ${options.packet.reviewId}`,
+    blocks: renderReviewRoom(options.packet, evidenceCount)
+  });
+  options.logger("review_room_posted", {
+    reviewId: options.packet.reviewId,
+    channel: options.channel,
+    evidenceCount
+  });
+}
+
 function reviewModal() {
   return {
     type: "modal" as const,
@@ -418,6 +544,45 @@ function reviewModal() {
           placeholder: {
             type: "plain_text" as const,
             text: "{ \"tools\": [...] }"
+          }
+        }
+      }
+    ]
+  };
+}
+
+function evidenceModal(reviewId: string) {
+  return {
+    type: "modal" as const,
+    callback_id: "securelore_evidence_submit",
+    private_metadata: reviewId,
+    title: {
+      type: "plain_text" as const,
+      text: "Add Evidence"
+    },
+    submit: {
+      type: "plain_text" as const,
+      text: "Save"
+    },
+    close: {
+      type: "plain_text" as const,
+      text: "Cancel"
+    },
+    blocks: [
+      {
+        type: "input" as const,
+        block_id: "evidence_block",
+        label: {
+          type: "plain_text" as const,
+          text: "Evidence or admin answer"
+        },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "evidence_text",
+          multiline: true,
+          placeholder: {
+            type: "plain_text" as const,
+            text: "Example: files:read is only used when a builder uploads review JSON. No Slack file content is retained."
           }
         }
       }

@@ -3,6 +3,7 @@ import type {
   FeedbackPersistenceInput,
   PolicyChunk,
   RetrievedPolicyChunk,
+  ReviewEvidenceInput,
   ReviewPersistenceInput,
   ReviewSummary
 } from "./types.js";
@@ -103,6 +104,33 @@ export class NeonMemoryStore {
         ${input.slackChannelId ?? null}
       )
     `;
+  }
+
+  async saveReviewEvidence(input: ReviewEvidenceInput): Promise<void> {
+    await this.sql`
+      INSERT INTO review_artifacts (review_id, artifact_type, content)
+      VALUES (
+        ${input.reviewId},
+        'review_evidence',
+        ${JSON.stringify({
+          questionId: input.questionId,
+          evidence: input.evidence,
+          slackUserId: input.slackUserId,
+          createdAt: new Date().toISOString()
+        })}::jsonb
+      )
+    `;
+  }
+
+  async countReviewEvidence(reviewId: string): Promise<number> {
+    const rows = await this.sql`
+      SELECT count(*)::int AS count
+      FROM review_artifacts
+      WHERE review_id = ${reviewId}
+        AND artifact_type = 'review_evidence'
+    `;
+
+    return Number(rows[0]?.count ?? 0);
   }
 
   async getReview(reviewId: string): Promise<ReviewPacket | null> {

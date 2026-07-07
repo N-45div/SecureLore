@@ -1,6 +1,6 @@
 import type { ReviewPacket } from "@securelore/review-core";
 import { NeonMemoryStore, type ReviewSummary } from "@securelore/memory";
-import { LocalStore, type FeedbackEvent } from "./local-store.js";
+import { LocalStore, type FeedbackEvent, type ReviewEvidenceEvent } from "./local-store.js";
 
 export class ReviewStore {
   private readonly local?: LocalStore;
@@ -45,6 +45,28 @@ export class ReviewStore {
     }
 
     await this.local?.appendFeedback(event);
+  }
+
+  async appendReviewEvidence(event: ReviewEvidenceEvent): Promise<void> {
+    if (this.neon) {
+      await this.neon.saveReviewEvidence({
+        reviewId: event.reviewId,
+        questionId: event.questionId,
+        evidence: event.evidence,
+        slackUserId: event.userId
+      });
+      return;
+    }
+
+    await this.local?.appendReviewEvidence(event);
+  }
+
+  async countReviewEvidence(reviewId: string): Promise<number> {
+    if (this.neon) {
+      return this.neon.countReviewEvidence(reviewId);
+    }
+
+    return 0;
   }
 
   async getReview(reviewId: string): Promise<ReviewPacket | null> {

@@ -27,6 +27,13 @@ export interface FeedbackPersistenceInput {
   slackChannelId?: string;
 }
 
+export interface ReviewEvidenceInput {
+  reviewId: string;
+  questionId?: string;
+  evidence: string;
+  slackUserId?: string;
+}
+
 export interface ReviewSummary {
   id: string;
   grade: string;
