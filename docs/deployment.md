@@ -18,7 +18,7 @@ Slack workspace
 
 Local development can still use Socket Mode by setting `SLACK_SOCKET_MODE=true` and `SLACK_APP_TOKEN`. Production should use HTTP mode with `SLACK_SOCKET_MODE=false`.
 
-On Vercel, durable review history is stored in Neon. Local filesystem fallback writes only to `/tmp/securelore`, because Vercel's `/var/task` deployment directory is read-only at runtime.
+On Vercel, review history and feedback are stored in Neon only. Local filesystem persistence is only used for local development and smoke tests without `DATABASE_URL`.
 
 ## Vercel Environment Variables
 

@@ -1,5 +1,4 @@
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { App, type Receiver } from "@slack/bolt";
 import { enrichReviewPacket } from "@securelore/agent-core";
@@ -21,15 +20,12 @@ import { ReviewStore } from "./storage/review-store.js";
 
 const currentDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = join(currentDir, "../../..");
-const localDataDir =
-  process.env.VERCEL === "1"
-    ? join(tmpdir(), "securelore", "slack")
-    : join(repoRoot, ".data/slack");
+const isVercel = process.env.VERCEL === "1";
 
 export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   const socketMode = !options.receiver && process.env.SLACK_SOCKET_MODE !== "false";
   const store = new ReviewStore({
-    local: new LocalStore(localDataDir),
+    local: isVercel ? undefined : new LocalStore(join(repoRoot, ".data/slack")),
     databaseUrl: process.env.DATABASE_URL
   });
   const policyContextProvider = createPolicyContextProvider(process.env);
