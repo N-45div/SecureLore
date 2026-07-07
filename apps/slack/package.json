@@ -15,6 +15,7 @@
     "smoke:policy": "npm run build && node dist/scripts/smoke-policy-context.js"
   },
   "dependencies": {
+    "@securelore/agent-core": "0.1.0",
     "@securelore/memory": "0.1.0",
     "@securelore/review-core": "0.1.0",
     "@securelore/slack-ui": "0.1.0",

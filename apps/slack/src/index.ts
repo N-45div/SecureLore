@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { App } from "@slack/bolt";
+import { enrichReviewPacket } from "@securelore/agent-core";
 import {
   renderAppHome,
   renderGeneratedArtifact,
@@ -83,7 +84,11 @@ app.event("file_shared", async ({ event, client, context }) => {
     const policyContext = await policyContextProvider.retrieve(
       buildPolicyQueryFromForm(classified)
     );
-    const packet = runReviewFromForm({ ...classified, policyContext });
+    const deterministicPacket = runReviewFromForm({ ...classified, policyContext });
+    const packet = await enrichReviewPacket(deterministicPacket, {
+      openRouterApiKey: process.env.OPENROUTER_API_KEY,
+      model: process.env.OPENROUTER_MODEL
+    });
 
     await store.saveReview(packet, {
       slackTeamId: context.teamId,
@@ -115,7 +120,11 @@ app.view("securelore_review_submit", async ({ ack, body, view, client }) => {
     const policyContext = await policyContextProvider.retrieve(
       buildPolicyQueryFromForm({ manifestJson, mcpToolsJson })
     );
-    const packet = runReviewFromForm({ manifestJson, mcpToolsJson, policyContext });
+    const deterministicPacket = runReviewFromForm({ manifestJson, mcpToolsJson, policyContext });
+    const packet = await enrichReviewPacket(deterministicPacket, {
+      openRouterApiKey: process.env.OPENROUTER_API_KEY,
+      model: process.env.OPENROUTER_MODEL
+    });
     await store.saveReview(packet, {
       slackTeamId: body.team?.id,
       slackUserId: body.user.id

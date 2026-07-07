@@ -1,3 +1,7 @@
+---
+cron: "0 6 * * *"
+---
+
 # Nightly Evals
 
 Run the SecureLore regression suite every night and after policy or skill changes.

@@ -1,3 +1,7 @@
+---
+description: Review MCP tool definitions, tools/list responses, tool descriptions, schemas, and readOnlyHint safety.
+---
+
 # MCP Tool Safety Skill
 
 Use this skill when reviewing MCP tool definitions, `tools/list` output, or tool descriptions intended for Slackbot MCP usage.

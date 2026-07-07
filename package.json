@@ -8,7 +8,11 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace @securelore/review-core && npm run build --workspace @securelore/memory && npm run build --workspace @securelore/slack-ui && npm run build --workspace @securelore/slack",
+    "build": "npm run build --workspace @securelore/review-core && npm run build --workspace @securelore/memory && npm run build --workspace @securelore/agent-core && npm run build --workspace @securelore/slack-ui && npm run build --workspace @securelore/slack",
+    "eve:info": "eve info",
+    "eve:build": "eve build",
+    "smoke:agent-offline": "npm run smoke:offline --workspace @securelore/agent-core",
+    "smoke:openrouter": "npm run smoke:openrouter --workspace @securelore/agent-core",
     "smoke:review": "npm run smoke --workspace @securelore/review-core",
     "smoke:slack-artifacts": "npm run smoke:artifacts --workspace @securelore/slack",
     "smoke:slack-file": "npm run smoke:file --workspace @securelore/slack",
@@ -24,7 +28,11 @@
     "typescript": "^5.5.4"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.8",
     "@neondatabase/serverless": "^1.1.0",
-    "cohere-ai": "^8.0.0"
+    "ai": "^7.0.16",
+    "cohere-ai": "^8.0.0",
+    "eve": "^0.20.0",
+    "zod": "^4.4.3"
   }
 }

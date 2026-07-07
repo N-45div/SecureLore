@@ -1,3 +1,7 @@
+---
+description: Review Slack app manifests, Marketplace materials, public pages, AI disclosures, and admin approval notes.
+---
+
 # Slack Marketplace Review Skill
 
 Use this skill when reviewing Slack app manifests, Marketplace descriptions, public pages, AI disclosures, and admin approval materials.

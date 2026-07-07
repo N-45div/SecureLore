@@ -1,0 +1,19 @@
+{
+  "name": "@securelore/agent-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "smoke:offline": "npm run build && node dist/scripts/smoke-offline.js",
+    "smoke:openrouter": "npm run build && node dist/scripts/smoke-openrouter.js"
+  },
+  "dependencies": {
+    "@securelore/review-core": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  }
+}
