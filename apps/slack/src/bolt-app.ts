@@ -217,6 +217,7 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       await ack();
       if (body.type !== "block_actions") return;
       const action = body.actions[0];
+      const responseChannel = getResponseChannel(body);
       const reviewId =
         action && "value" in action && typeof action.value === "string"
           ? action.value
@@ -228,9 +229,13 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         channelId: body.channel?.id,
         createdAt: new Date().toISOString()
       });
-      await client.chat.postEphemeral({
-        channel: body.channel?.id ?? "",
-        user: body.user.id,
+      logger("feedback_recorded", {
+        actionId,
+        reviewId,
+        userId: body.user.id
+      });
+      await client.chat.postMessage({
+        channel: responseChannel,
         text: "Feedback captured for the SecureLore learning queue."
       });
     });
@@ -245,12 +250,21 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       await ack();
       if (body.type !== "block_actions") return;
       const reviewId = getActionValue(body.actions[0]);
+      const responseChannel = getResponseChannel(body);
+      logger("artifact_requested", {
+        artifactType: action.type,
+        reviewId,
+        userId: body.user.id
+      });
       const packet = await store.getReview(reviewId);
 
       if (!packet) {
-        await client.chat.postEphemeral({
-          channel: body.channel?.id ?? "",
-          user: body.user.id,
+        logger("artifact_missing_review", {
+          artifactType: action.type,
+          reviewId
+        });
+        await client.chat.postMessage({
+          channel: responseChannel,
           text: "Review packet was not found. Run the review again."
         });
         return;
@@ -261,19 +275,26 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       );
 
       if (!artifact) {
-        await client.chat.postEphemeral({
-          channel: body.channel?.id ?? "",
-          user: body.user.id,
+        logger("artifact_missing", {
+          artifactType: action.type,
+          reviewId
+        });
+        await client.chat.postMessage({
+          channel: responseChannel,
           text: "That artifact was not generated for this review."
         });
         return;
       }
 
-      await client.chat.postEphemeral({
-        channel: body.channel?.id ?? "",
-        user: body.user.id,
+      await client.chat.postMessage({
+        channel: responseChannel,
         text: artifact.title,
         blocks: renderGeneratedArtifact(packet, artifact as GeneratedArtifact)
+      });
+      logger("artifact_posted", {
+        artifactType: action.type,
+        reviewId,
+        userId: body.user.id
       });
     });
   }
@@ -339,6 +360,10 @@ function getActionValue(action: unknown): string {
   }
 
   return "unknown";
+}
+
+function getResponseChannel(body: { channel?: { id?: string }; user: { id: string } }): string {
+  return body.channel?.id || body.user.id;
 }
 
 function reviewModal() {
