@@ -122,28 +122,8 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       view.state.values.mcp_tools_block?.mcp_tools_json?.value ?? "";
 
     try {
-      const policyContext = await policyContextProvider.retrieve(
-        buildPolicyQueryFromForm({ manifestJson, mcpToolsJson })
-      );
-      const deterministicPacket = runReviewFromForm({
-        manifestJson,
-        mcpToolsJson,
-        policyContext
-      });
-      const packet = await enrichReviewPacket(deterministicPacket, {
-        openRouterApiKey: process.env.OPENROUTER_API_KEY,
-        model: process.env.OPENROUTER_MODEL
-      });
-      await store.saveReview(packet, {
-        slackTeamId: body.team?.id,
-        slackUserId: body.user.id
-      });
+      runReviewFromForm({ manifestJson, mcpToolsJson });
       await ack();
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: packet.overallRisk.summary,
-        blocks: renderReviewPacket(packet)
-      });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Review failed.";
       await ack({
@@ -152,7 +132,40 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           manifest_block: message
         }
       });
+      return;
     }
+
+    void (async () => {
+      try {
+        const policyContext = await policyContextProvider.retrieve(
+          buildPolicyQueryFromForm({ manifestJson, mcpToolsJson })
+        );
+        const deterministicPacket = runReviewFromForm({
+          manifestJson,
+          mcpToolsJson,
+          policyContext
+        });
+        const packet = await enrichReviewPacket(deterministicPacket, {
+          openRouterApiKey: process.env.OPENROUTER_API_KEY,
+          model: process.env.OPENROUTER_MODEL
+        });
+        await store.saveReview(packet, {
+          slackTeamId: body.team?.id,
+          slackUserId: body.user.id
+        });
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: packet.overallRisk.summary,
+          blocks: renderReviewPacket(packet)
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Review failed.";
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: `SecureLore review failed: ${message}`
+        });
+      }
+    })();
   });
 
   for (const actionId of [
