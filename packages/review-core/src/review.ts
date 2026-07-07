@@ -110,6 +110,16 @@ export function reviewArtifacts(input: ReviewInput): ReviewPacket {
           issues: review.issues,
           recommendedMetadata: review.recommendedMetadata
         }))
+      },
+      {
+        type: "marketplace_checklist",
+        title: "Marketplace readiness checklist",
+        content: generateMarketplaceChecklist(input.manifest, findings)
+      },
+      {
+        type: "manifest_patch_plan",
+        title: "Safer manifest patch plan",
+        content: generateManifestPatchPlan(input.manifest, findings, scopeJustifications)
       }
     ],
     evalTrace: {
@@ -456,4 +466,189 @@ function buildRecommendedToolMetadata(
         ? "Rename this tool and describe whether it reads data or performs an external action."
         : "Ensure the title, description, and schema match the actual tool behavior."
   };
+}
+
+function generateMarketplaceChecklist(
+  manifest: SlackManifestLike | undefined,
+  findings: Finding[]
+): Array<{
+  item: string;
+  status: "pass" | "blocked" | "needs_evidence" | "not_submitted";
+  evidence: string;
+  nextAction: string;
+}> {
+  if (!manifest) {
+    return [
+      {
+        item: "Slack app manifest",
+        status: "not_submitted",
+        evidence: "No Slack manifest was included in this review.",
+        nextAction: "Submit a real Slack app manifest to evaluate Marketplace readiness."
+      }
+    ];
+  }
+
+  const findingIds = new Set(findings.map((finding) => finding.id));
+  const hasWarnScopes = findings.some(
+    (finding) => finding.category === "oauth_scope_risk" && finding.severity === "warn"
+  );
+  const hasBlockerScopes = findings.some(
+    (finding) => finding.category === "oauth_scope_risk" && finding.severity === "blocker"
+  );
+  const urls = collectManifestUrls(manifest);
+  const httpsUrls = urls.filter((url) => url.startsWith("https://"));
+  const missingPages = findMissingArtifacts(manifest);
+  const aiDisclosure = manifest.securelore_ai_disclosure;
+
+  return [
+    {
+      item: "Production HTTPS Slack endpoints",
+      status: findingIds.has("insecure-slack-endpoints") ? "blocked" : "pass",
+      evidence:
+        urls.length === 0
+          ? "No command/event/action URLs were found."
+          : `${httpsUrls.length}/${urls.length} endpoint(s) use HTTPS.`,
+      nextAction: findingIds.has("insecure-slack-endpoints")
+        ? "Replace every http:// Slack request URL with a deployed https:// URL."
+        : "Keep production URLs stable for judging and admin testing."
+    },
+    {
+      item: "Least-privilege scope review",
+      status: hasBlockerScopes ? "blocked" : hasWarnScopes ? "needs_evidence" : "pass",
+      evidence: findings
+        .filter((finding) => finding.category === "oauth_scope_risk")
+        .map((finding) => finding.title)
+        .join("; ") || "No scope findings were raised.",
+      nextAction: hasBlockerScopes
+        ? "Remove broad history scopes or document the exact tested feature and access controls."
+        : hasWarnScopes
+          ? "Add feature-level justification for each sensitive scope before submission."
+          : "Keep scope descriptions aligned with tested user-visible workflows."
+    },
+    {
+      item: "Public landing, privacy, and support pages",
+      status: missingPages.length > 0 ? "blocked" : "pass",
+      evidence: missingPages.length > 0 ? `Missing: ${missingPages.join(", ")}.` : "All public page URLs are declared.",
+      nextAction: missingPages.length > 0
+        ? "Publish public app pages and add their URLs to securelore_public_pages."
+        : "Verify all public pages are accessible without login."
+    },
+    {
+      item: "AI disclosure",
+      status: findingIds.has("missing-ai-disclosure") ? "blocked" : "pass",
+      evidence: aiDisclosure
+        ? `model=${aiDisclosure.model ?? "missing"}, retention=${aiDisclosure.retention ?? "missing"}, training_use=${aiDisclosure.training_use ?? "missing"}`
+        : "No AI disclosure object was declared.",
+      nextAction: findingIds.has("missing-ai-disclosure")
+        ? "Declare model/provider, retention, and no-training behavior in the app listing and privacy policy."
+        : "Keep AI disclosure consistent across manifest, landing page, and demo."
+    },
+    {
+      item: "Admin approval packet",
+      status: findings.some((finding) => finding.severity === "blocker") ? "blocked" : "pass",
+      evidence: `${findings.filter((finding) => finding.severity === "blocker").length} blocker(s), ${findings.filter((finding) => finding.severity === "warn").length} warning(s).`,
+      nextAction: "Use the admin brief and scope table artifacts as the approval handoff."
+    }
+  ];
+}
+
+function generateManifestPatchPlan(
+  manifest: SlackManifestLike | undefined,
+  findings: Finding[],
+  scopeJustifications: ScopeJustification[]
+): Array<{
+  path: string;
+  current?: unknown;
+  suggested?: unknown;
+  reason: string;
+}> {
+  if (!manifest) return [];
+
+  const patches: Array<{
+    path: string;
+    current?: unknown;
+    suggested?: unknown;
+    reason: string;
+  }> = [];
+
+  for (const [index, command] of (manifest.features?.slash_commands ?? []).entries()) {
+    if (command.url?.startsWith("http://")) {
+      patches.push({
+        path: `features.slash_commands[${index}].url`,
+        current: command.url,
+        suggested: toProductionHttpsPlaceholder(command.url),
+        reason: "Slack Marketplace review requires production HTTPS endpoints."
+      });
+    }
+  }
+
+  const eventUrl = manifest.settings?.event_subscriptions?.request_url;
+  if (eventUrl?.startsWith("http://")) {
+    patches.push({
+      path: "settings.event_subscriptions.request_url",
+      current: eventUrl,
+      suggested: toProductionHttpsPlaceholder(eventUrl),
+      reason: "Event subscriptions must use deployed HTTPS URLs."
+    });
+  }
+
+  const actionUrl = manifest.settings?.interactivity?.request_url;
+  if (actionUrl?.startsWith("http://")) {
+    patches.push({
+      path: "settings.interactivity.request_url",
+      current: actionUrl,
+      suggested: toProductionHttpsPlaceholder(actionUrl),
+      reason: "Interactivity actions must use deployed HTTPS URLs."
+    });
+  }
+
+  const removableScopes = scopeJustifications
+    .filter((scope) => scope.status === "remove")
+    .map((scope) => scope.scope);
+  if (removableScopes.length > 0) {
+    const currentScopes = manifest.oauth_config?.scopes?.bot ?? [];
+    patches.push({
+      path: "oauth_config.scopes.bot",
+      current: currentScopes,
+      suggested: currentScopes.filter((scope) => !removableScopes.includes(scope)),
+      reason: "Remove broad scopes that lack a declared tested feature."
+    });
+  }
+
+  if (findMissingArtifacts(manifest).length > 0) {
+    patches.push({
+      path: "securelore_public_pages",
+      current: manifest.securelore_public_pages ?? null,
+      suggested: {
+        landing_page_url: "https://<your-public-app-page>",
+        privacy_policy_url: "https://<your-public-privacy-policy>",
+        support_page_url: "https://<your-public-support-page>"
+      },
+      reason: "Marketplace-style review requires public landing, privacy, and support pages."
+    });
+  }
+
+  if (findings.some((finding) => finding.id === "missing-ai-disclosure")) {
+    patches.push({
+      path: "securelore_ai_disclosure",
+      current: manifest.securelore_ai_disclosure ?? null,
+      suggested: {
+        model: "<provider/model>",
+        retention: "<retention behavior>",
+        training_use: "Slack data is not used to train LLMs"
+      },
+      reason: "AI apps should disclose model use, retention, and no-training behavior."
+    });
+  }
+
+  return patches;
+}
+
+function toProductionHttpsPlaceholder(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `https://<production-host>${parsed.pathname}`;
+  } catch {
+    return "https://<production-host>/<slack-endpoint>";
+  }
 }

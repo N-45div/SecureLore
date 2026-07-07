@@ -123,6 +123,24 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
         },
         value: packet.reviewId,
         action_id: "artifact_mcp_metadata"
+      },
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Checklist"
+        },
+        value: packet.reviewId,
+        action_id: "artifact_marketplace_checklist"
+      },
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Patch plan"
+        },
+        value: packet.reviewId,
+        action_id: "artifact_manifest_patch_plan"
       }
     ]
   });
@@ -325,10 +343,58 @@ function formatArtifactContent(artifact: GeneratedArtifact): string {
     return truncateForSlack(rows || "No MCP metadata recommendations were generated.");
   }
 
+  if (artifact.type === "marketplace_checklist" && Array.isArray(artifact.content)) {
+    const rows = artifact.content
+      .slice(0, 10)
+      .map((row) => {
+        const value = row as {
+          item?: string;
+          status?: string;
+          evidence?: string;
+          nextAction?: string;
+        };
+        return [
+          `• *${value.item ?? "Checklist item"}* - ${value.status ?? "unknown"}`,
+          `evidence: ${value.evidence ?? "none"}`,
+          `next: ${value.nextAction ?? "none"}`
+        ].join("\n");
+      })
+      .join("\n\n");
+    return truncateForSlack(rows || "No Marketplace checklist rows were generated.");
+  }
+
+  if (artifact.type === "manifest_patch_plan" && Array.isArray(artifact.content)) {
+    const rows = artifact.content
+      .slice(0, 10)
+      .map((row) => {
+        const value = row as {
+          path?: string;
+          current?: unknown;
+          suggested?: unknown;
+          reason?: string;
+        };
+        return [
+          `• *${value.path ?? "unknown path"}*`,
+          `current: \`${formatInlineJson(value.current)}\``,
+          `suggested: \`${formatInlineJson(value.suggested)}\``,
+          `reason: ${value.reason ?? "none"}`
+        ].join("\n");
+      })
+      .join("\n\n");
+    return truncateForSlack(rows || "No manifest patch suggestions were generated.");
+  }
+
   return truncateForSlack(`\`\`\`${JSON.stringify(artifact.content, null, 2)}\`\`\``);
 }
 
 function truncateForSlack(value: string): string {
   if (value.length <= 2800) return value;
   return `${value.slice(0, 2790)}...`;
+}
+
+function formatInlineJson(value: unknown): string {
+  if (value === undefined) return "undefined";
+  const json = JSON.stringify(value);
+  if (!json) return String(value);
+  return json.length > 240 ? `${json.slice(0, 237)}...` : json;
 }

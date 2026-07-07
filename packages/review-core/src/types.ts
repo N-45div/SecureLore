@@ -64,9 +64,11 @@ export interface GeneratedArtifact {
     | "fixed_manifest"
     | "scope_justification_table"
     | "marketplace_notes"
+    | "marketplace_checklist"
     | "privacy_disclosure"
     | "ai_disclosure"
     | "admin_approval_brief"
+    | "manifest_patch_plan"
     | "mcp_tool_metadata";
   title: string;
   content: string | Record<string, unknown> | unknown[];

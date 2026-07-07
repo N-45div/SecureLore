@@ -244,7 +244,9 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   for (const action of [
     { id: "artifact_admin_brief", type: "admin_approval_brief" },
     { id: "artifact_scope_table", type: "scope_justification_table" },
-    { id: "artifact_mcp_metadata", type: "mcp_tool_metadata" }
+    { id: "artifact_mcp_metadata", type: "mcp_tool_metadata" },
+    { id: "artifact_marketplace_checklist", type: "marketplace_checklist" },
+    { id: "artifact_manifest_patch_plan", type: "manifest_patch_plan" }
   ] as const) {
     app.action(action.id, async ({ ack, body, client }) => {
       await ack();
