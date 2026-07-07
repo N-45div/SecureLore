@@ -47,6 +47,17 @@ Eve owns agent intelligence: artifact classification, policy-grounded reasoning,
 
 Internal planning docs live in `.internal/` and are intentionally ignored.
 
+## Deployment
+
+SecureLore is deployment-ready for Vercel HTTP endpoints:
+
+- `/api/health`
+- `/api/slack/events`
+- `/api/slack/commands`
+- `/api/slack/actions`
+
+See [docs/deployment.md](docs/deployment.md) for the Vercel and Slack setup path.
+
 ## Build Direction
 
 SecureLore is not a hardcoded linter. It combines deterministic preflight checks with policy-grounded agent reasoning and an eval-gated learning loop.
