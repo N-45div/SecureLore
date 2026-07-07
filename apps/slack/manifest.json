@@ -11,7 +11,7 @@
     "slash_commands": [
       {
         "command": "/securelore",
-        "url": "https://your-securelore-deployment.vercel.app/api/slack/commands",
+        "url": "https://securelore.vercel.app/api/slack/commands",
         "description": "Review a Slack agent or MCP tool",
         "usage_hint": "review"
       }
@@ -34,7 +34,7 @@
   },
   "settings": {
     "event_subscriptions": {
-      "request_url": "https://your-securelore-deployment.vercel.app/api/slack/events",
+      "request_url": "https://securelore.vercel.app/api/slack/events",
       "bot_events": [
         "app_mention",
         "file_shared"
@@ -42,7 +42,7 @@
     },
     "interactivity": {
       "is_enabled": true,
-      "request_url": "https://your-securelore-deployment.vercel.app/api/slack/actions"
+      "request_url": "https://securelore.vercel.app/api/slack/actions"
     },
     "org_deploy_enabled": false,
     "socket_mode_enabled": false,

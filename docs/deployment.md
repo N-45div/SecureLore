@@ -45,19 +45,23 @@ OPENROUTER_MODEL=openai/gpt-4o-mini
 
 ## Slack App URLs
 
-After deployment, replace `your-securelore-deployment.vercel.app` in `apps/slack/manifest.json` with the real Vercel domain.
+The production deployment uses:
+
+```txt
+https://securelore.vercel.app
+```
 
 Use these URLs in the Slack app settings:
 
 ```txt
 Slash command /securelore:
-https://<vercel-domain>/api/slack/commands
+https://securelore.vercel.app/api/slack/commands
 
 Event subscriptions:
-https://<vercel-domain>/api/slack/events
+https://securelore.vercel.app/api/slack/events
 
 Interactivity:
-https://<vercel-domain>/api/slack/actions
+https://securelore.vercel.app/api/slack/actions
 ```
 
 Required bot scopes:
