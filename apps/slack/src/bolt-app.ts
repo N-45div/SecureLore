@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { App, type Receiver } from "@slack/bolt";
+import { waitUntil } from "@vercel/functions";
 import { enrichReviewPacket } from "@securelore/agent-core";
 import {
   renderAppHome,
@@ -136,65 +137,73 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       return;
     }
 
-    try {
-      logger("modal_review_started", {
-        teamId: body.team?.id,
-        userId: body.user.id,
-        manifestBytes: manifestJson.length,
-        mcpToolsBytes: mcpToolsJson.length
-      });
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: "SecureLore review started. I will post the policy-grounded packet here when it is ready."
-      });
-      logger("modal_review_start_notice_posted", {
-        userId: body.user.id
-      });
-      const policyContext = await policyContextProvider.retrieve(
-        buildPolicyQueryFromForm({ manifestJson, mcpToolsJson })
-      );
-      logger("modal_policy_context_retrieved", {
-        count: policyContext.length
-      });
-      const deterministicPacket = runReviewFromForm({
-        manifestJson,
-        mcpToolsJson,
-        policyContext
-      });
-      const packet = await enrichReviewPacket(deterministicPacket, {
-        openRouterApiKey: process.env.OPENROUTER_API_KEY,
-        model: process.env.OPENROUTER_MODEL
-      });
-      logger("modal_review_enriched", {
-        reviewId: packet.reviewId,
-        grade: packet.overallRisk.grade,
-        findings: packet.findings.length
-      });
-      await store.saveReview(packet, {
-        slackTeamId: body.team?.id,
-        slackUserId: body.user.id
-      });
-      logger("modal_review_saved", {
-        reviewId: packet.reviewId
-      });
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: packet.overallRisk.summary,
-        blocks: renderReviewPacket(packet)
-      });
-      logger("modal_review_posted", {
-        reviewId: packet.reviewId,
-        userId: body.user.id
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Review failed.";
-      logger("modal_review_failed", {
-        message
-      });
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: `SecureLore review failed: ${message}`
-      });
+    const reviewWork = (async () => {
+      try {
+        logger("modal_review_started", {
+          teamId: body.team?.id,
+          userId: body.user.id,
+          manifestBytes: manifestJson.length,
+          mcpToolsBytes: mcpToolsJson.length
+        });
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: "SecureLore review started. I will post the policy-grounded packet here when it is ready."
+        });
+        logger("modal_review_start_notice_posted", {
+          userId: body.user.id
+        });
+        const policyContext = await policyContextProvider.retrieve(
+          buildPolicyQueryFromForm({ manifestJson, mcpToolsJson })
+        );
+        logger("modal_policy_context_retrieved", {
+          count: policyContext.length
+        });
+        const deterministicPacket = runReviewFromForm({
+          manifestJson,
+          mcpToolsJson,
+          policyContext
+        });
+        const packet = await enrichReviewPacket(deterministicPacket, {
+          openRouterApiKey: process.env.OPENROUTER_API_KEY,
+          model: process.env.OPENROUTER_MODEL
+        });
+        logger("modal_review_enriched", {
+          reviewId: packet.reviewId,
+          grade: packet.overallRisk.grade,
+          findings: packet.findings.length
+        });
+        await store.saveReview(packet, {
+          slackTeamId: body.team?.id,
+          slackUserId: body.user.id
+        });
+        logger("modal_review_saved", {
+          reviewId: packet.reviewId
+        });
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: packet.overallRisk.summary,
+          blocks: renderReviewPacket(packet)
+        });
+        logger("modal_review_posted", {
+          reviewId: packet.reviewId,
+          userId: body.user.id
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Review failed.";
+        logger("modal_review_failed", {
+          message
+        });
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: `SecureLore review failed: ${message}`
+        });
+      }
+    })();
+
+    if (isVercel) {
+      waitUntil(reviewWork);
+    } else {
+      void reviewWork;
     }
   });
 

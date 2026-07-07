@@ -30,6 +30,7 @@
   "dependencies": {
     "@ai-sdk/openai": "^4.0.8",
     "@neondatabase/serverless": "^1.1.0",
+    "@vercel/functions": "^3.7.5",
     "ai": "^7.0.16",
     "cohere-ai": "^8.0.0",
     "eve": "^0.20.0",
