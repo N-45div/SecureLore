@@ -3,10 +3,12 @@ import {
   NeonMemoryStore,
   PolicyMemory
 } from "@securelore/memory";
+import type { LearningExampleInput } from "@securelore/memory";
 import type { PolicyContext } from "@securelore/review-core";
 
 export interface PolicyContextProvider {
   retrieve(query: string): Promise<PolicyContext[]>;
+  promoteLearningExample?(input: LearningExampleInput): Promise<void>;
 }
 
 export class NoopPolicyContextProvider implements PolicyContextProvider {
@@ -26,8 +28,12 @@ export class NeonCoherePolicyContextProvider implements PolicyContextProvider {
   }
 
   async retrieve(query: string): Promise<PolicyContext[]> {
-    const chunks = await this.memory.retrieve(query, 5);
-    return chunks.map((chunk) => ({
+    const [chunks, lessons] = await Promise.all([
+      this.memory.retrieve(query, 5),
+      this.memory.retrieveLearningExamples(query, 3)
+    ]);
+    return [
+      ...chunks.map((chunk) => ({
       id: chunk.id,
       title: chunk.title,
       source: chunk.source,
@@ -35,7 +41,20 @@ export class NeonCoherePolicyContextProvider implements PolicyContextProvider {
       similarity: chunk.similarity,
       excerpt: chunk.content,
       tags: chunk.tags
-    }));
+      })),
+      ...lessons.map((lesson) => ({
+        id: `learning:${lesson.id}`,
+        title: `Learned review lesson: ${lesson.kind}`,
+        source: "securelore-learning",
+        similarity: lesson.similarity,
+        excerpt: lesson.content,
+        tags: ["learned", lesson.kind, ...(lesson.sourceReviewId ? [lesson.sourceReviewId] : [])]
+      }))
+    ];
+  }
+
+  async promoteLearningExample(input: LearningExampleInput): Promise<void> {
+    await this.memory.promoteLearningExample(input);
   }
 }
 

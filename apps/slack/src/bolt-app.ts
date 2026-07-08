@@ -407,6 +407,95 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     }
   });
 
+  app.action("room_promote_lesson", async ({ ack, body, client }) => {
+    await ack();
+    if (body.type !== "block_actions" || !body.trigger_id) return;
+    const reviewId = getActionValue(body.actions[0]);
+
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: lessonModal(reviewId)
+    });
+  });
+
+  app.view("securelore_lesson_submit", async ({ ack, body, view, client }) => {
+    const reviewId = view.private_metadata;
+    const lesson =
+      view.state.values.lesson_block?.lesson_text?.value?.trim() ?? "";
+    const kind =
+      view.state.values.lesson_kind_block?.lesson_kind?.selected_option?.value ??
+      "admin_evidence";
+
+    if (!reviewId || reviewId === "unknown") {
+      await ack({
+        response_action: "errors",
+        errors: {
+          lesson_block: "Review ID was missing. Run a new SecureLore review."
+        }
+      });
+      return;
+    }
+
+    if (lesson.length < 24) {
+      await ack({
+        response_action: "errors",
+        errors: {
+          lesson_block: "Write a sanitized lesson with enough detail to help future reviews."
+        }
+      });
+      return;
+    }
+
+    await ack();
+
+    const lessonWork = (async () => {
+      try {
+        if (!policyContextProvider.promoteLearningExample) {
+          await client.chat.postMessage({
+            channel: body.user.id,
+            text: "Learning memory is not configured. Set DATABASE_URL and COHERE_API_KEY to promote lessons."
+          });
+          return;
+        }
+
+        await policyContextProvider.promoteLearningExample({
+          sourceReviewId: reviewId,
+          kind,
+          content: sanitizeLearningLesson(lesson)
+        });
+        logger("learning_lesson_promoted", {
+          reviewId,
+          kind,
+          userId: body.user.id
+        });
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: [
+            `Learning lesson promoted for ${reviewId}.`,
+            "SecureLore will retrieve it as product memory in future reviews.",
+            "This does not train an LLM or send Slack data for model training."
+          ].join(" ")
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Lesson promotion failed.";
+        logger("learning_lesson_failed", {
+          reviewId,
+          message
+        });
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: `SecureLore could not promote that lesson: ${message}`
+        });
+      }
+    })();
+
+    if (isVercel) {
+      waitUntil(lessonWork);
+    } else {
+      void lessonWork;
+    }
+  });
+
   app.action("home_refresh", async ({ ack, body, client, context }) => {
     await ack();
     if (body.type !== "block_actions") return;
@@ -494,6 +583,14 @@ function getActionValue(action: unknown): string {
 
 function getResponseChannel(body: { channel?: { id?: string }; user: { id: string } }): string {
   return body.channel?.id || body.user.id;
+}
+
+function sanitizeLearningLesson(value: string): string {
+  return value
+    .replace(/xox[baprs]-[A-Za-z0-9-]+/g, "[redacted-slack-token]")
+    .replace(/sk-[A-Za-z0-9_-]{20,}/g, "[redacted-api-key]")
+    .replace(/postgresql:\/\/\S+/g, "[redacted-database-url]")
+    .slice(0, 1600);
 }
 
 async function postReviewRoom(options: {
@@ -605,6 +702,98 @@ function evidenceModal(reviewId: string) {
           placeholder: {
             type: "plain_text" as const,
             text: "Example: files:read is only used when a builder uploads review JSON. No Slack file content is retained."
+          }
+        }
+      }
+    ]
+  };
+}
+
+function lessonModal(reviewId: string) {
+  return {
+    type: "modal" as const,
+    callback_id: "securelore_lesson_submit",
+    private_metadata: reviewId,
+    title: {
+      type: "plain_text" as const,
+      text: "Promote Lesson"
+    },
+    submit: {
+      type: "plain_text" as const,
+      text: "Promote"
+    },
+    close: {
+      type: "plain_text" as const,
+      text: "Cancel"
+    },
+    blocks: [
+      {
+        type: "input" as const,
+        block_id: "lesson_kind_block",
+        label: {
+          type: "plain_text" as const,
+          text: "Lesson type"
+        },
+        element: {
+          type: "static_select" as const,
+          action_id: "lesson_kind",
+          initial_option: {
+            text: {
+              type: "plain_text" as const,
+              text: "Admin evidence"
+            },
+            value: "admin_evidence"
+          },
+          options: [
+            {
+              text: {
+                type: "plain_text" as const,
+                text: "Admin evidence"
+              },
+              value: "admin_evidence"
+            },
+            {
+              text: {
+                type: "plain_text" as const,
+                text: "False alarm"
+              },
+              value: "false_alarm"
+            },
+            {
+              text: {
+                type: "plain_text" as const,
+                text: "Accepted fix"
+              },
+              value: "accepted_fix"
+            },
+            {
+              text: {
+                type: "plain_text" as const,
+                text: "Scope justification"
+              },
+              value: "scope_justification"
+            }
+          ]
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "lesson_block",
+        label: {
+          type: "plain_text" as const,
+          text: "Sanitized lesson"
+        },
+        hint: {
+          type: "plain_text" as const,
+          text: "Do not include tokens, secrets, private customer data, or raw Slack messages."
+        },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "lesson_text",
+          multiline: true,
+          placeholder: {
+            type: "plain_text" as const,
+            text: "Example: files:read is acceptable only when the app has a visible user-triggered file review workflow, documents retention, and avoids storing file content."
           }
         }
       }

@@ -1,6 +1,11 @@
 import type { EmbeddingProvider } from "./cohere-embeddings.js";
 import type { NeonMemoryStore } from "./neon-store.js";
-import type { PolicyChunk, RetrievedPolicyChunk } from "./types.js";
+import type {
+  LearningExampleInput,
+  PolicyChunk,
+  RetrievedLearningExample,
+  RetrievedPolicyChunk
+} from "./types.js";
 
 export class PolicyMemory {
   constructor(
@@ -21,5 +26,21 @@ export class PolicyMemory {
   async retrieve(query: string, limit = 6): Promise<RetrievedPolicyChunk[]> {
     const [embedding] = await this.embeddings.embedTexts([query], "search_query");
     return this.store.retrievePolicyChunks(embedding, limit);
+  }
+
+  async promoteLearningExample(input: LearningExampleInput): Promise<void> {
+    const [embedding] = await this.embeddings.embedTexts(
+      [`${input.kind}\n${input.content}`],
+      "search_document"
+    );
+    await this.store.saveLearningExample(input, embedding);
+  }
+
+  async retrieveLearningExamples(
+    query: string,
+    limit = 3
+  ): Promise<RetrievedLearningExample[]> {
+    const [embedding] = await this.embeddings.embedTexts([query], "search_query");
+    return this.store.retrieveLearningExamples(embedding, limit);
   }
 }

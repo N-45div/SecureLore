@@ -5,8 +5,11 @@ export { NeonMemoryStore } from "./neon-store.js";
 export { PolicyMemory } from "./policy-memory.js";
 export type {
   FeedbackPersistenceInput,
+  LearningExampleInput,
   PolicyChunk,
+  RetrievedLearningExample,
   RetrievedPolicyChunk,
+  ReviewEvidenceInput,
   ReviewPersistenceInput,
   ReviewSummary
 } from "./types.js";

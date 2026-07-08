@@ -264,6 +264,15 @@ export function renderReviewRoom(packet: ReviewPacket, evidenceCount = 0): Slack
         type: "button",
         text: {
           type: "plain_text",
+          text: "Promote lesson"
+        },
+        value: packet.reviewId,
+        action_id: "room_promote_lesson"
+      },
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
           text: "Admin brief"
         },
         value: packet.reviewId,

@@ -34,6 +34,20 @@ export interface ReviewEvidenceInput {
   slackUserId?: string;
 }
 
+export interface LearningExampleInput {
+  sourceReviewId?: string;
+  kind: string;
+  content: string;
+}
+
+export interface RetrievedLearningExample {
+  id: string;
+  sourceReviewId?: string;
+  kind: string;
+  content: string;
+  similarity: number;
+}
+
 export interface ReviewSummary {
   id: string;
   grade: string;

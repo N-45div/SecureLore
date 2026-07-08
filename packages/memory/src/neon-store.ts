@@ -1,8 +1,10 @@
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import type {
   FeedbackPersistenceInput,
+  LearningExampleInput,
   PolicyChunk,
   RetrievedPolicyChunk,
+  RetrievedLearningExample,
   ReviewEvidenceInput,
   ReviewPersistenceInput,
   ReviewSummary
@@ -63,6 +65,44 @@ export class NeonMemoryStore {
       title: String(row.title),
       content: String(row.content),
       tags: Array.isArray(row.tags) ? row.tags.map(String) : [],
+      similarity: Number(row.similarity)
+    }));
+  }
+
+  async saveLearningExample(input: LearningExampleInput, embedding: number[]): Promise<void> {
+    await this.sql`
+      INSERT INTO learning_examples (source_review_id, kind, content, embedding)
+      VALUES (
+        ${input.sourceReviewId ?? null},
+        ${input.kind},
+        ${input.content},
+        ${vectorLiteral(embedding)}::vector
+      )
+    `;
+  }
+
+  async retrieveLearningExamples(
+    queryEmbedding: number[],
+    limit = 3
+  ): Promise<RetrievedLearningExample[]> {
+    const rows = await this.sql`
+      SELECT
+        id,
+        source_review_id,
+        kind,
+        content,
+        1 - (embedding <=> ${vectorLiteral(queryEmbedding)}::vector) AS similarity
+      FROM learning_examples
+      WHERE embedding IS NOT NULL
+      ORDER BY ((embedding <=> ${vectorLiteral(queryEmbedding)}::vector) + 0)
+      LIMIT ${limit}
+    `;
+
+    return rows.map((row) => ({
+      id: String(row.id),
+      sourceReviewId: row.source_review_id ? String(row.source_review_id) : undefined,
+      kind: String(row.kind),
+      content: String(row.content),
       similarity: Number(row.similarity)
     }));
   }
