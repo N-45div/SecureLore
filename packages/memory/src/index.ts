@@ -11,5 +11,6 @@ export type {
   RetrievedPolicyChunk,
   ReviewEvidenceInput,
   ReviewPersistenceInput,
-  ReviewSummary
+  ReviewSummary,
+  StoredReviewEvidence
 } from "./types.js";

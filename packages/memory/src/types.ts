@@ -34,6 +34,14 @@ export interface ReviewEvidenceInput {
   slackUserId?: string;
 }
 
+export interface StoredReviewEvidence {
+  reviewId: string;
+  questionId?: string;
+  evidence: string;
+  slackUserId?: string;
+  createdAt: string;
+}
+
 export interface LearningExampleInput {
   sourceReviewId?: string;
   kind: string;

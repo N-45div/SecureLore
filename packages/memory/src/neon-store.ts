@@ -7,7 +7,8 @@ import type {
   RetrievedLearningExample,
   ReviewEvidenceInput,
   ReviewPersistenceInput,
-  ReviewSummary
+  ReviewSummary,
+  StoredReviewEvidence
 } from "./types.js";
 import type { ReviewPacket } from "@securelore/review-core";
 import { vectorLiteral } from "./vector.js";
@@ -171,6 +172,33 @@ export class NeonMemoryStore {
     `;
 
     return Number(rows[0]?.count ?? 0);
+  }
+
+  async listReviewEvidence(reviewId: string, limit = 5): Promise<StoredReviewEvidence[]> {
+    const rows = await this.sql`
+      SELECT content, created_at
+      FROM review_artifacts
+      WHERE review_id = ${reviewId}
+        AND artifact_type = 'review_evidence'
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `;
+
+    return rows.map((row) => {
+      const content = row.content as {
+        questionId?: string;
+        evidence?: string;
+        slackUserId?: string;
+        createdAt?: string;
+      };
+      return {
+        reviewId,
+        questionId: content.questionId,
+        evidence: String(content.evidence ?? ""),
+        slackUserId: content.slackUserId,
+        createdAt: content.createdAt ?? new Date(String(row.created_at)).toISOString()
+      };
+    });
   }
 
   async getReview(reviewId: string): Promise<ReviewPacket | null> {

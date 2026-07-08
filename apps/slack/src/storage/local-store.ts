@@ -49,6 +49,21 @@ export class LocalStore {
     );
   }
 
+  async listReviewEvidence(reviewId: string, limit = 5): Promise<ReviewEvidenceEvent[]> {
+    try {
+      const raw = await readFile(join(this.dataDir, "review-evidence.jsonl"), "utf8");
+      return raw
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as ReviewEvidenceEvent)
+        .filter((event) => event.reviewId === reviewId)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .slice(0, limit);
+    } catch {
+      return [];
+    }
+  }
+
   async getReview(reviewId: string): Promise<ReviewPacket | null> {
     try {
       const raw = await readFile(join(this.dataDir, "reviews", `${reviewId}.json`), "utf8");

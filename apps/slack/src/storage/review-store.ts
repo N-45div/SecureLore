@@ -69,6 +69,21 @@ export class ReviewStore {
     return 0;
   }
 
+  async listReviewEvidence(reviewId: string, limit = 5): Promise<ReviewEvidenceEvent[]> {
+    if (this.neon) {
+      const rows = await this.neon.listReviewEvidence(reviewId, limit);
+      return rows.map((row) => ({
+        reviewId: row.reviewId,
+        questionId: row.questionId,
+        evidence: row.evidence,
+        userId: row.slackUserId,
+        createdAt: row.createdAt
+      }));
+    }
+
+    return this.local?.listReviewEvidence(reviewId, limit) ?? [];
+  }
+
   async getReview(reviewId: string): Promise<ReviewPacket | null> {
     if (this.neon) {
       const packet = await this.neon.getReview(reviewId);

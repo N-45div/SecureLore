@@ -1,68 +1,122 @@
 # SecureLore
 
-SecureLore is a Slack-native preflight control plane for Slack agents, MCP tools, and Marketplace submissions.
+SecureLore is a Slack-native preflight review system for teams building Slack agents, MCP integrations, and Marketplace-ready apps.
 
-It reviews a proposed Slack agent before it enters a workspace, then produces the artifacts a builder, workspace admin, or Marketplace reviewer needs to trust it:
+The business problem is the approval gap between a fast-moving builder and the workspace admin who must decide whether a Slack app is safe to install. Builders often have a manifest, a few scopes, an MCP tools list, and a demo. Admins need something different: clear risk, scope justification, data handling, AI disclosure, and evidence that the app behaves as claimed. SecureLore turns that gap into a structured Slack workflow.
 
-- install risk grade
+## What SecureLore Does
+
+SecureLore reviews real Slack app and MCP artifacts, then creates an admin-ready packet:
+
+- risk grade with blockers and warnings
 - OAuth scope justification table
-- Slack Marketplace readiness checklist
 - MCP tool safety review
-- privacy and AI disclosure review
-- safer manifest diff
+- Marketplace-style checklist
+- safer manifest patch plan
 - admin approval brief
-- eval-backed review packet
+- Review Room for evidence capture
+- retrieval learning trace for promoted lessons
 
-## Hackathon Target
+The product is intentionally Slack-native. Builders run `/securelore review`, paste or upload artifacts, add evidence in Slack, promote sanitized lessons, and reopen reviews from App Home.
 
-Primary track: **New Slack Agent**
+## Why It Matters
 
-SecureLore uses Slack as the working surface and MCP/Eve as the agentic review layer. The Organizations track is treated as optional because Slack Marketplace submission adds operational constraints such as production deployment and active non-sandbox workspace installs.
+Slack agents can request sensitive scopes, expose AI behavior, connect MCP tools, and act inside workspaces. A generic chatbot answer is not enough for that workflow. SecureLore gives teams a repeatable review process that captures evidence, explains policy concerns, and improves over time without training a model on Slack data.
+
+SecureLore learns through retrieval memory:
+
+```mermaid
+flowchart LR
+  Evidence[Evidence and feedback] --> Sanitize[Sanitized promoted lesson]
+  Sanitize --> Embed[Cohere embedding]
+  Embed --> Neon[(Neon pgvector memory)]
+  Neon --> Retrieve[Future review retrieval]
+  Retrieve --> Packet[Better review packet]
+  Evidence -. not used for model training .-> NoTraining[No LLM training]
+```
 
 ## Architecture
 
-```txt
-Slack workspace
-  -> Bolt app
-    -> Eve agent workflow
-      -> review-core parsers
-      -> policy retrieval
-      -> MCP tool analyzers
-      -> eval and learning memory
-    -> Block Kit review packet
+```mermaid
+flowchart LR
+  Slack[Slack workspace] --> Vercel[Vercel HTTPS endpoints]
+  Vercel --> Bolt[Bolt app]
+  Bolt --> Core[review-core checks]
+  Bolt --> Memory[Neon + Cohere retrieval]
+  Bolt --> LLM[OpenRouter enrichment]
+  Core --> Packet[Review packet]
+  Memory --> Packet
+  LLM --> Packet
+  Packet --> SlackUI[Block Kit UI]
+  SlackUI --> Slack
 ```
 
-Bolt owns Slack plumbing: slash commands, modals, App Home, interactivity, file uploads, OAuth, and request verification.
+Detailed diagrams are in [docs/architecture.md](docs/architecture.md).
 
-Eve owns agent intelligence: artifact classification, policy-grounded reasoning, review workflow state, skills, scheduled evals, and learning from feedback.
+## Technical Stack
 
-## Phase 1 Contents
+- Slack Bolt for commands, events, modals, App Home, and Block Kit actions
+- Vercel for production HTTPS endpoints
+- Next.js for public landing, privacy, and support pages
+- TypeScript workspaces for Slack app, review core, memory, UI, and agent enrichment
+- Neon Postgres with pgvector for review history, evidence, policies, and learning examples
+- Cohere embeddings for policy and lesson retrieval
+- OpenRouter for LLM-assisted review enrichment
 
-- [packages/review-core/schemas/review-packet.schema.json](packages/review-core/schemas/review-packet.schema.json)
-- [artifacts/samples/bad-support-agent.manifest.json](artifacts/samples/bad-support-agent.manifest.json)
-- [artifacts/samples/fixed-support-agent.manifest.json](artifacts/samples/fixed-support-agent.manifest.json)
-- [artifacts/samples/bad-mcp-tools.json](artifacts/samples/bad-mcp-tools.json)
-- [artifacts/samples/fixed-mcp-tools.json](artifacts/samples/fixed-mcp-tools.json)
-- [artifacts/evals/phase1-regression-cases.jsonl](artifacts/evals/phase1-regression-cases.jsonl)
+## Public Pages
 
-Internal planning docs live in `.internal/` and are intentionally ignored.
+SecureLore includes public pages required for a production-style Slack app review:
+
+- `/` landing page
+- `/privacy` privacy and AI/data disclosure
+- `/support` support path and data request guidance
+- `/api/health` deployment health check
+
+## Slack Workflow
+
+```mermaid
+sequenceDiagram
+  participant B as Builder
+  participant S as Slack
+  participant A as SecureLore
+  participant M as Memory
+
+  B->>S: /securelore review
+  S->>A: Submit manifest and MCP tools/list JSON
+  A->>M: Retrieve policy and learned lessons
+  A->>S: Post review packet and Review Room
+  B->>S: Add evidence to a finding
+  A->>M: Store review evidence
+  A->>S: Repost Review Room with evidence
+  B->>S: Promote sanitized lesson
+  A->>M: Store embedded learning example
+```
+
+## Local Development
+
+Use Node 24.
+
+```bash
+npm install
+npm run build
+npm run smoke:slack-form
+npm run smoke:slack-artifacts
+npm run smoke:slack-home
+```
 
 ## Deployment
 
-SecureLore is deployment-ready for Vercel HTTP endpoints:
+Production endpoints are deployed on Vercel:
 
-- `/`
-- `/api/health`
-- `/api/slack/events`
 - `/api/slack/commands`
+- `/api/slack/events`
 - `/api/slack/actions`
+- `/api/health`
 
-See [docs/deployment.md](docs/deployment.md) for the Vercel and Slack setup path.
+See [docs/deployment.md](docs/deployment.md) for Slack and Vercel setup.
 
-## Build Direction
+## Hackathon Track
 
-SecureLore is not a hardcoded linter. It combines deterministic preflight checks with policy-grounded agent reasoning and an eval-gated learning loop.
+Primary track: **New Slack Agent**.
 
-Deterministic checks catch objective blockers such as missing privacy URLs, absent MCP `readOnlyHint`, unconfigured support pages, or broad scopes with no declared feature mapping.
-
-The agent reasons over intent, policy, and artifacts to decide whether a risky permission is justified, generate safer alternatives, and produce reviewer-ready explanations.
+SecureLore fits the challenge by building a Slack-native agent workflow that automates app review, surfaces policy-grounded insights, connects external memory and model systems, and creates artifacts that help teams make safer install decisions.

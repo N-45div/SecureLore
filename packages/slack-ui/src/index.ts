@@ -16,6 +16,12 @@ export interface ReviewHomeSummary {
   createdAt: string;
 }
 
+export interface ReviewEvidenceSummary {
+  questionId?: string;
+  evidence: string;
+  createdAt: string;
+}
+
 const SEVERITY_LABEL: Record<Severity, string> = {
   pass: "PASS",
   info: "INFO",
@@ -197,15 +203,38 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
     ]
   });
 
+  blocks.push({
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Learning trace"
+        },
+        value: packet.reviewId,
+        action_id: "artifact_learning_trace"
+      }
+    ]
+  });
+
   return blocks;
 }
 
-export function renderReviewRoom(packet: ReviewPacket, evidenceCount = 0): SlackBlock[] {
+export function renderReviewRoom(
+  packet: ReviewPacket,
+  evidenceCount = 0,
+  evidence: ReviewEvidenceSummary[] = []
+): SlackBlock[] {
   const evidenceQuestions = packet.findings
     .filter((finding) => finding.fixability === "needs_clarification")
     .slice(0, 4);
   const blockers = packet.findings.filter((finding) => finding.severity === "blocker").length;
   const warnings = packet.findings.filter((finding) => finding.severity === "warn").length;
+  const evidenceQuestionIds = new Set(evidence.map((item) => item.questionId).filter(Boolean));
+  const learnedLessons = (packet.policyContext ?? []).filter(
+    (policy) => policy.source === "securelore-learning"
+  );
 
   const blocks: SlackBlock[] = [
     {
@@ -234,7 +263,10 @@ export function renderReviewRoom(packet: ReviewPacket, evidenceCount = 0): Slack
       text: {
         type: "mrkdwn",
         text: `*Evidence questions*\n${evidenceQuestions
-          .map((finding) => `• *${finding.title}*\n${finding.description}`)
+          .map((finding) => {
+            const status = evidenceQuestionIds.has(finding.id) ? "evidence added" : "needs answer";
+            return `• *${finding.title}* - ${status}\n${finding.description}`;
+          })
           .join("\n")}`
       }
     });
@@ -244,6 +276,37 @@ export function renderReviewRoom(packet: ReviewPacket, evidenceCount = 0): Slack
       text: {
         type: "mrkdwn",
         text: "No clarification questions are open. Use the generated artifacts for admin approval."
+      }
+    });
+  }
+
+  if (evidence.length > 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Latest evidence*\n${evidence
+          .slice(0, 3)
+          .map((item) => {
+            const label = item.questionId
+              ? packet.findings.find((finding) => finding.id === item.questionId)?.title ?? item.questionId
+              : "General evidence";
+            return `• *${label}:* ${truncateInline(item.evidence, 220)}`;
+          })
+          .join("\n")}`
+      }
+    });
+  }
+
+  if (learnedLessons.length > 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Lessons used*\n${learnedLessons
+          .slice(0, 3)
+          .map((lesson) => `• ${truncateInline(lesson.excerpt, 180)}`)
+          .join("\n")}`
       }
     });
   }
@@ -277,11 +340,59 @@ export function renderReviewRoom(packet: ReviewPacket, evidenceCount = 0): Slack
         },
         value: packet.reviewId,
         action_id: "artifact_admin_brief"
+      },
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Learning trace"
+        },
+        value: packet.reviewId,
+        action_id: "artifact_learning_trace"
       }
     ]
   });
 
   return blocks;
+}
+
+export function renderLearningTrace(packet: ReviewPacket): SlackBlock[] {
+  const lessons = (packet.policyContext ?? []).filter(
+    (policy) => policy.source === "securelore-learning"
+  );
+
+  return [
+    {
+      type: "header",
+      text: {
+        type: "plain_text",
+        text: "SecureLore learning trace"
+      }
+    },
+    {
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `Review ${packet.reviewId} - ${lessons.length} learned lesson(s) retrieved`
+        }
+      ]
+    },
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: lessons.length > 0
+          ? lessons
+              .slice(0, 5)
+              .map((lesson) =>
+                `• *${lesson.title}* (${formatSimilarity(lesson.similarity)})\n${truncateInline(lesson.excerpt, 420)}`
+              )
+              .join("\n\n")
+          : "No promoted SecureLore lessons were retrieved for this review."
+      }
+    }
+  ];
 }
 
 export function renderGeneratedArtifact(packet: ReviewPacket, artifact: GeneratedArtifact): SlackBlock[] {
@@ -310,6 +421,42 @@ export function renderGeneratedArtifact(packet: ReviewPacket, artifact: Generate
       }
     }
   ];
+}
+
+export function renderAdminBriefWithEvidence(
+  packet: ReviewPacket,
+  artifact: GeneratedArtifact,
+  evidence: ReviewEvidenceSummary[]
+): SlackBlock[] {
+  const blocks = renderGeneratedArtifact(packet, artifact);
+
+  if (evidence.length > 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Submitted evidence*\n${evidence
+          .slice(0, 5)
+          .map((item) => {
+            const label = item.questionId
+              ? packet.findings.find((finding) => finding.id === item.questionId)?.title ?? item.questionId
+              : "General evidence";
+            return `• *${label}:* ${truncateInline(item.evidence, 260)}`;
+          })
+          .join("\n")}`
+      }
+    });
+  } else {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*Submitted evidence*\nNo evidence has been attached to this review yet."
+      }
+    });
+  }
+
+  return blocks;
 }
 
 export function renderAppHome(reviews: ReviewHomeSummary[]): SlackBlock[] {
@@ -525,6 +672,17 @@ function formatArtifactContent(artifact: GeneratedArtifact): string {
 function truncateForSlack(value: string): string {
   if (value.length <= 2800) return value;
   return `${value.slice(0, 2790)}...`;
+}
+
+function truncateInline(value: string, maxLength: number): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength - 3)}...`;
+}
+
+function formatSimilarity(value: number | undefined): string {
+  if (value === undefined || Number.isNaN(value)) return "similarity unknown";
+  return `${Math.round(value * 100)}% match`;
 }
 
 function formatInlineJson(value: unknown): string {

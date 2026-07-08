@@ -5,7 +5,9 @@ import { waitUntil } from "@vercel/functions";
 import { enrichReviewPacket } from "@securelore/agent-core";
 import {
   renderAppHome,
+  renderAdminBriefWithEvidence,
   renderGeneratedArtifact,
+  renderLearningTrace,
   renderReviewPacket,
   renderReviewRoom
 } from "@securelore/slack-ui";
@@ -303,6 +305,22 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         return;
       }
 
+      if (action.type === "admin_approval_brief") {
+        const evidence = await store.listReviewEvidence(reviewId, 5);
+        await client.chat.postMessage({
+          channel: responseChannel,
+          text: artifact.title,
+          blocks: renderAdminBriefWithEvidence(packet, artifact as GeneratedArtifact, evidence)
+        });
+        logger("artifact_posted", {
+          artifactType: action.type,
+          reviewId,
+          userId: body.user.id,
+          evidenceCount: evidence.length
+        });
+        return;
+      }
+
       await client.chat.postMessage({
         channel: responseChannel,
         text: artifact.title,
@@ -316,14 +334,41 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     });
   }
 
+  app.action("artifact_learning_trace", async ({ ack, body, client }) => {
+    await ack();
+    if (body.type !== "block_actions") return;
+    const reviewId = getActionValue(body.actions[0]);
+    const responseChannel = getResponseChannel(body);
+    const packet = await store.getReview(reviewId);
+
+    if (!packet) {
+      await client.chat.postMessage({
+        channel: responseChannel,
+        text: "Review packet was not found. Run the review again."
+      });
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel: responseChannel,
+      text: `Learning trace for ${reviewId}`,
+      blocks: renderLearningTrace(packet)
+    });
+    logger("learning_trace_posted", {
+      reviewId,
+      userId: body.user.id
+    });
+  });
+
   app.action("room_add_evidence", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
     const reviewId = getActionValue(body.actions[0]);
+    const packet = await store.getReview(reviewId);
 
     await client.views.open({
       trigger_id: body.trigger_id,
-      view: evidenceModal(reviewId)
+      view: evidenceModal(reviewId, packet ?? undefined)
     });
   });
 
@@ -331,6 +376,8 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     const reviewId = view.private_metadata;
     const evidence =
       view.state.values.evidence_block?.evidence_text?.value?.trim() ?? "";
+    const questionId =
+      view.state.values.evidence_question_block?.evidence_question?.selected_option?.value;
 
     if (!reviewId || reviewId === "unknown") {
       await ack({
@@ -358,6 +405,7 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       try {
         await store.appendReviewEvidence({
           reviewId,
+          questionId,
           evidence,
           userId: body.user.id,
           createdAt: new Date().toISOString()
@@ -600,16 +648,16 @@ async function postReviewRoom(options: {
   store: ReviewStore;
   logger: ReturnType<typeof createRuntimeLogger>;
 }): Promise<void> {
-  const evidenceCount = await options.store.countReviewEvidence(options.packet.reviewId);
+  const evidence = await options.store.listReviewEvidence(options.packet.reviewId, 5);
   await options.client.chat.postMessage({
     channel: options.channel,
     text: `SecureLore review room for ${options.packet.reviewId}`,
-    blocks: renderReviewRoom(options.packet, evidenceCount)
+    blocks: renderReviewRoom(options.packet, evidence.length, evidence)
   });
   options.logger("review_room_posted", {
     reviewId: options.packet.reviewId,
     channel: options.channel,
-    evidenceCount
+    evidenceCount: evidence.length
   });
 }
 
@@ -670,7 +718,65 @@ function reviewModal() {
   };
 }
 
-function evidenceModal(reviewId: string) {
+function evidenceModal(reviewId: string, packet?: ReviewPacket) {
+  const findingOptions = (packet?.findings ?? [])
+    .filter((finding) => finding.severity === "blocker" || finding.severity === "warn")
+    .slice(0, 10)
+    .map((finding) => ({
+      text: {
+        type: "plain_text" as const,
+        text: finding.title.slice(0, 75)
+      },
+      value: finding.id
+    }));
+  const blocks: Array<{
+    type: "input";
+    block_id: string;
+    optional?: boolean;
+    label: { type: "plain_text"; text: string };
+    hint?: { type: "plain_text"; text: string };
+    element: Record<string, unknown>;
+  }> = [];
+
+  if (findingOptions.length > 0) {
+    blocks.push({
+      type: "input" as const,
+      block_id: "evidence_question_block",
+      optional: true,
+      label: {
+        type: "plain_text" as const,
+        text: "Related finding"
+      },
+      element: {
+        type: "static_select" as const,
+        action_id: "evidence_question",
+        placeholder: {
+          type: "plain_text" as const,
+          text: "Choose the finding this evidence answers"
+        },
+        options: findingOptions
+      }
+    });
+  }
+
+  blocks.push({
+    type: "input" as const,
+    block_id: "evidence_block",
+    label: {
+      type: "plain_text" as const,
+      text: "Evidence or admin answer"
+    },
+    element: {
+      type: "plain_text_input" as const,
+      action_id: "evidence_text",
+      multiline: true,
+      placeholder: {
+        type: "plain_text" as const,
+        text: "Example: files:read is only used when a builder uploads review JSON. No Slack file content is retained."
+      }
+    }
+  });
+
   return {
     type: "modal" as const,
     callback_id: "securelore_evidence_submit",
@@ -687,25 +793,7 @@ function evidenceModal(reviewId: string) {
       type: "plain_text" as const,
       text: "Cancel"
     },
-    blocks: [
-      {
-        type: "input" as const,
-        block_id: "evidence_block",
-        label: {
-          type: "plain_text" as const,
-          text: "Evidence or admin answer"
-        },
-        element: {
-          type: "plain_text_input" as const,
-          action_id: "evidence_text",
-          multiline: true,
-          placeholder: {
-            type: "plain_text" as const,
-            text: "Example: files:read is only used when a builder uploads review JSON. No Slack file content is retained."
-          }
-        }
-      }
-    ]
+    blocks
   };
 }
 
