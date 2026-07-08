@@ -11,6 +11,7 @@ export interface ReviewHomeSummary {
   summary: string;
   blockerCount: number;
   warningCount: number;
+  evidenceCount: number;
   artifactTypes: string[];
   createdAt: string;
 }
@@ -315,7 +316,7 @@ export function renderAppHome(reviews: ReviewHomeSummary[]): SlackBlock[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Slack agent and MCP preflight reviews*"
+        text: "*Slack-native readiness dashboard for agents, MCP tools, scopes, and Marketplace evidence.*"
       }
     },
     {
@@ -363,18 +364,59 @@ export function renderAppHome(reviews: ReviewHomeSummary[]): SlackBlock[] {
     }
   });
 
-  for (const review of reviews.slice(0, 10)) {
+  for (const review of reviews.slice(0, 8)) {
     blocks.push({
       type: "section",
       text: {
         type: "mrkdwn",
         text: [
           `*${review.grade.toUpperCase()}* - ${formatDate(review.createdAt)}`,
-          `${review.blockerCount} blocker(s), ${review.warningCount} warning(s)`,
-          `Artifacts: ${review.artifactTypes.join(", ") || "none"}`,
+          `${review.blockerCount} blocker(s), ${review.warningCount} warning(s), ${review.evidenceCount} evidence item(s)`,
+          `Inputs: ${review.artifactTypes.join(", ") || "none"}`,
           `_${review.summary}_`
         ].join("\n")
       }
+    });
+    blocks.push({
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Open room"
+          },
+          value: review.id,
+          action_id: "home_open_room"
+        },
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Add evidence"
+          },
+          value: review.id,
+          action_id: "room_add_evidence"
+        },
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Admin brief"
+          },
+          value: review.id,
+          action_id: "artifact_admin_brief"
+        },
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "Patch plan"
+          },
+          value: review.id,
+          action_id: "artifact_manifest_patch_plan"
+        }
+      ]
     });
   }
 

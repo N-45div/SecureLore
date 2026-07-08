@@ -433,6 +433,28 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     });
   });
 
+  app.action("home_open_room", async ({ ack, body, client }) => {
+    await ack();
+    if (body.type !== "block_actions") return;
+    const reviewId = getActionValue(body.actions[0]);
+    const packet = await store.getReview(reviewId);
+    if (!packet) {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "Review packet was not found. Run the review again."
+      });
+      return;
+    }
+
+    await postReviewRoom({
+      client,
+      channel: body.user.id,
+      packet,
+      store,
+      logger
+    });
+  });
+
   app.event("app_mention", async ({ event, say }) => {
     if (!("text" in event) || !event.text?.toLowerCase().includes("review")) {
       await say("Mention me with `review` or run `/securelore review`.");

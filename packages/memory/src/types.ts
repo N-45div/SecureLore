@@ -40,6 +40,7 @@ export interface ReviewSummary {
   summary: string;
   blockerCount: number;
   warningCount: number;
+  evidenceCount: number;
   artifactTypes: string[];
   createdAt: string;
 }

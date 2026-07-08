@@ -157,7 +157,13 @@ export class NeonMemoryStore {
         grade,
         summary,
         packet,
-        created_at
+        created_at,
+        (
+          SELECT count(*)::int
+          FROM review_artifacts
+          WHERE review_artifacts.review_id = review_sessions.id
+            AND review_artifacts.artifact_type = 'review_evidence'
+        ) AS evidence_count
       FROM review_sessions
       WHERE (${options?.slackTeamId ?? null}::text IS NULL OR slack_team_id = ${options?.slackTeamId ?? null})
         AND (${options?.slackUserId ?? null}::text IS NULL OR slack_user_id = ${options?.slackUserId ?? null})
@@ -177,6 +183,7 @@ export class NeonMemoryStore {
         summary: String(row.summary),
         blockerCount: findings.filter((finding) => finding.severity === "blocker").length,
         warningCount: findings.filter((finding) => finding.severity === "warn").length,
+        evidenceCount: Number(row.evidence_count ?? 0),
         artifactTypes: packet.inputSummary?.artifactTypes ?? [],
         createdAt: new Date(String(row.created_at)).toISOString()
       };

@@ -85,6 +85,7 @@ export class LocalStore {
         summary: packet.overallRisk.summary,
         blockerCount: packet.findings.filter((finding) => finding.severity === "blocker").length,
         warningCount: packet.findings.filter((finding) => finding.severity === "warn").length,
+        evidenceCount: 0,
         artifactTypes: packet.inputSummary.artifactTypes,
         createdAt: packet.createdAt
       }));
