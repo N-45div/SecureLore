@@ -8,7 +8,11 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace @securelore/review-core && npm run build --workspace @securelore/memory && npm run build --workspace @securelore/agent-core && npm run build --workspace @securelore/slack-ui && npm run build --workspace @securelore/slack",
+    "build": "npm run build:packages && npm run build:web",
+    "build:packages": "npm run build --workspace @securelore/review-core && npm run build --workspace @securelore/memory && npm run build --workspace @securelore/agent-core && npm run build --workspace @securelore/slack-ui && npm run build --workspace @securelore/slack",
+    "build:web": "next build",
+    "dev": "next dev",
+    "start": "next start",
     "eve:info": "eve info",
     "eve:build": "eve build",
     "smoke:agent-offline": "npm run smoke:offline --workspace @securelore/agent-core",
@@ -25,6 +29,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "typescript": "^5.5.4"
   },
   "dependencies": {
@@ -34,6 +40,12 @@
     "ai": "^7.0.16",
     "cohere-ai": "^8.0.0",
     "eve": "^0.20.0",
+    "next": "^16.2.10",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "zod": "^4.4.3"
+  },
+  "overrides": {
+    "postcss": "^8.5.10"
   }
 }
