@@ -51,7 +51,7 @@ flowchart LR
   SlackUI --> Slack
 ```
 
-Detailed diagrams are in [docs/architecture.md](docs/architecture.md).
+Detailed diagrams are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Technical Stack
 
@@ -104,7 +104,7 @@ npm run smoke:slack-artifacts
 npm run smoke:slack-home
 ```
 
-## Deployment
+## Production Endpoints
 
 Production endpoints are deployed on Vercel:
 
@@ -113,10 +113,12 @@ Production endpoints are deployed on Vercel:
 - `/api/slack/actions`
 - `/api/health`
 
-See [docs/deployment.md](docs/deployment.md) for Slack and Vercel setup.
-
 ## Hackathon Track
 
 Primary track: **New Slack Agent**.
 
 SecureLore fits the challenge by building a Slack-native agent workflow that automates app review, surfaces policy-grounded insights, connects external memory and model systems, and creates artifacts that help teams make safer install decisions.
+
+## License
+
+SecureLore is released under the [MIT License](LICENSE).
