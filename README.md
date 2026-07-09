@@ -57,7 +57,7 @@ Detailed diagrams are in [docs/architecture.md](docs/architecture.md).
 
 - Slack Bolt for commands, events, modals, App Home, and Block Kit actions
 - Vercel for production HTTPS endpoints
-- Next.js for public landing, privacy, and support pages
+- Next.js for public landing, privacy, and status pages
 - TypeScript workspaces for Slack app, review core, memory, UI, and agent enrichment
 - Neon Postgres with pgvector for review history, evidence, policies, and learning examples
 - Cohere embeddings for policy and lesson retrieval
@@ -69,7 +69,7 @@ SecureLore includes public pages required for a production-style Slack app revie
 
 - `/` landing page
 - `/privacy` privacy and AI/data disclosure
-- `/support` support path and data request guidance
+- `/status` human-readable service status
 - `/api/health` deployment health check
 
 ## Slack Workflow

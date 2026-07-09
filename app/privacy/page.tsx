@@ -29,7 +29,7 @@ const rows = [
   {
     label: "Deletion",
     value:
-      "Workspace owners or installing users can request deletion of review records, feedback, and evidence by contacting support."
+      "Workspace owners or installing users can request deletion of review records, feedback, and evidence through the project submission contact."
   }
 ];
 
@@ -61,9 +61,11 @@ export default function PrivacyPage() {
       <section className="notice">
         <h2>Contact for privacy requests</h2>
         <p>
-          For access, transfer, correction, or deletion requests, contact the
-          project maintainer through the support page. Include the workspace
-          name, Slack team ID if available, and the review ID when relevant.
+          For access, transfer, correction, or deletion requests, use the
+          contact path listed on the Devpost project submission. Include the
+          workspace name, Slack team ID if available, and the review ID when
+          relevant. Do not send secrets, OAuth tokens, signing secrets, or
+          private customer data in support messages.
         </p>
       </section>
     </main>
@@ -79,7 +81,7 @@ function Header() {
       </Link>
       <nav aria-label="Primary">
         <Link href="/">Home</Link>
-        <Link href="/support">Support</Link>
+        <Link href="/status">Status</Link>
       </nav>
     </header>
   );

@@ -39,7 +39,7 @@ export default function HomePage() {
             practical artifacts instead of generic chatbot advice.
           </p>
           <div className="heroActions">
-            <a className="primaryAction" href="/api/health">Check live service</a>
+            <Link className="primaryAction" href="/status">View live status</Link>
             <Link className="secondaryAction" href="/privacy">Privacy details</Link>
           </div>
         </div>
@@ -97,8 +97,8 @@ function SiteHeader() {
         <span>SecureLore</span>
       </Link>
       <nav aria-label="Primary">
+        <Link href="/status">Status</Link>
         <Link href="/privacy">Privacy</Link>
-        <Link href="/support">Support</Link>
       </nav>
     </header>
   );
@@ -109,8 +109,8 @@ function SiteFooter() {
     <footer className="siteFooter">
       <span>SecureLore for Slack agent readiness</span>
       <nav aria-label="Footer">
+        <Link href="/status">Status</Link>
         <Link href="/privacy">Privacy</Link>
-        <Link href="/support">Support</Link>
       </nav>
     </footer>
   );
