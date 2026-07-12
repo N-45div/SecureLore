@@ -146,6 +146,8 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   });
 
   app.event("app_home_opened", async ({ event, client, context }) => {
+    if (event.tab === "messages") return;
+
     const reviews = await store.listRecentReviews({
       slackTeamId: context.teamId,
       slackUserId: event.user,
@@ -157,6 +159,14 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         type: "home",
         blocks: renderAppHome(reviews)
       }
+    });
+  });
+
+  // Agent View supplies the active Slack context on later message.im events.
+  // Keep this signal observable without persisting message or channel content.
+  app.event("app_context_changed", async ({ event }) => {
+    logger("agent_context_changed", {
+      entityCount: event.context?.entities?.length ?? 0
     });
   });
 

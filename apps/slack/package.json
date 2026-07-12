@@ -19,7 +19,7 @@
     "@securelore/memory": "0.1.0",
     "@securelore/review-core": "0.1.0",
     "@securelore/slack-ui": "0.1.0",
-    "@slack/bolt": "^4.4.0"
+    "@slack/bolt": "^4.7.0"
   },
   "devDependencies": {
     "typescript": "^5.5.4"
