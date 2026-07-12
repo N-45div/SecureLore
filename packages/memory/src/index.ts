@@ -4,6 +4,7 @@ export { requireEnv } from "./env.js";
 export { NeonMemoryStore } from "./neon-store.js";
 export { PolicyMemory } from "./policy-memory.js";
 export type {
+  EvalCaseInput,
   FeedbackPersistenceInput,
   LearningExampleInput,
   PolicyChunk,

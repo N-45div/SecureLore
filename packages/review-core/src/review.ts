@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type {
   EvidenceAssessment,
   Finding,
@@ -152,7 +153,7 @@ export function reviewArtifacts(input: ReviewInput): ReviewPacket {
 
   return {
     packetVersion: "phase1",
-    reviewId: `local-${Date.now()}`,
+    reviewId: `review-${randomUUID()}`,
     createdAt: new Date().toISOString(),
     inputSummary: {
       artifactTypes,

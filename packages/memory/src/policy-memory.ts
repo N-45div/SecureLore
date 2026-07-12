@@ -38,9 +38,10 @@ export class PolicyMemory {
 
   async retrieveLearningExamples(
     query: string,
+    slackTeamId: string,
     limit = 3
   ): Promise<RetrievedLearningExample[]> {
     const [embedding] = await this.embeddings.embedTexts([query], "search_query");
-    return this.store.retrieveLearningExamples(embedding, limit);
+    return this.store.retrieveLearningExamples(embedding, slackTeamId, limit);
   }
 }

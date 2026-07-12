@@ -59,11 +59,19 @@ CREATE TABLE IF NOT EXISTS eval_cases (
 CREATE TABLE IF NOT EXISTS learning_examples (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   source_review_id TEXT REFERENCES review_sessions(id) ON DELETE SET NULL,
+  slack_team_id TEXT,
+  promoted_by TEXT,
   kind TEXT NOT NULL,
   content TEXT NOT NULL,
   embedding vector(1024),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE learning_examples ADD COLUMN IF NOT EXISTS slack_team_id TEXT;
+ALTER TABLE learning_examples ADD COLUMN IF NOT EXISTS promoted_by TEXT;
+
+CREATE INDEX IF NOT EXISTS learning_examples_team_idx
+  ON learning_examples (slack_team_id, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS learning_examples_embedding_idx
   ON learning_examples

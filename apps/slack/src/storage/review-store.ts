@@ -1,5 +1,5 @@
 import type { ReviewPacket } from "@securelore/review-core";
-import { NeonMemoryStore, type ReviewSummary } from "@securelore/memory";
+import { NeonMemoryStore, type EvalCaseInput, type ReviewSummary } from "@securelore/memory";
 import { LocalStore, type FeedbackEvent, type ReviewEvidenceEvent } from "./local-store.js";
 
 export class ReviewStore {
@@ -47,6 +47,12 @@ export class ReviewStore {
     await this.local?.appendFeedback(event);
   }
 
+  async saveEvalCase(input: EvalCaseInput): Promise<boolean> {
+    if (!this.neon) return false;
+    await this.neon.saveEvalCase(input);
+    return true;
+  }
+
   async appendReviewEvidence(event: ReviewEvidenceEvent): Promise<void> {
     if (this.neon) {
       await this.neon.saveReviewEvidence({
@@ -84,9 +90,9 @@ export class ReviewStore {
     return this.local?.listReviewEvidence(reviewId, limit) ?? [];
   }
 
-  async getReview(reviewId: string): Promise<ReviewPacket | null> {
+  async getReview(reviewId: string, slackTeamId?: string): Promise<ReviewPacket | null> {
     if (this.neon) {
-      const packet = await this.neon.getReview(reviewId);
+      const packet = await this.neon.getReview(reviewId, slackTeamId);
       if (packet) return packet;
     }
 

@@ -27,6 +27,15 @@ export interface FeedbackPersistenceInput {
   slackChannelId?: string;
 }
 
+export interface EvalCaseInput {
+  id: string;
+  sourceReviewId: string;
+  task: string;
+  input: Record<string, unknown>;
+  expected: Record<string, unknown>;
+  status?: "candidate" | "approved" | "rejected";
+}
+
 export interface ReviewEvidenceInput {
   reviewId: string;
   questionId?: string;
@@ -44,6 +53,8 @@ export interface StoredReviewEvidence {
 
 export interface LearningExampleInput {
   sourceReviewId?: string;
+  slackTeamId: string;
+  promotedBy: string;
   kind: string;
   content: string;
 }
@@ -51,6 +62,8 @@ export interface LearningExampleInput {
 export interface RetrievedLearningExample {
   id: string;
   sourceReviewId?: string;
+  slackTeamId: string;
+  promotedBy: string;
   kind: string;
   content: string;
   similarity: number;

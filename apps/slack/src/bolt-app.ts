@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { App, Assistant, type Receiver } from "@slack/bolt";
@@ -174,7 +175,8 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       const rawJson = await downloadSlackFileJson(file, botToken);
       const classified = classifySlackFileJson(rawJson);
       const policyContext = await policyContextProvider.retrieve(
-        buildPolicyQueryFromForm(classified)
+        buildPolicyQueryFromForm(classified),
+        context.teamId
       );
       const deterministicPacket = runReviewFromForm({ ...classified, policyContext });
       const packet = await enrichReviewPacket(deterministicPacket, {
@@ -246,7 +248,8 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           userId: body.user.id
         });
         const policyContext = await policyContextProvider.retrieve(
-          buildPolicyQueryFromForm({ manifestJson, mcpToolsJson })
+          buildPolicyQueryFromForm({ manifestJson, mcpToolsJson }),
+          body.team?.id
         );
         logger("modal_policy_context_retrieved", {
           count: policyContext.length
@@ -262,7 +265,7 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         });
         const parentReviewId = view.private_metadata || undefined;
         if (parentReviewId) {
-          const parentPacket = await store.getReview(parentReviewId);
+          const parentPacket = await store.getReview(parentReviewId, body.team?.id);
           if (parentPacket) packet = compareReviewPackets(parentPacket, packet);
         }
         logger("modal_review_enriched", {
@@ -334,6 +337,29 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         channelId: body.channel?.id,
         createdAt: new Date().toISOString()
       });
+      let evalCreated = false;
+      if (actionId === "feedback_missed_issue" || actionId === "feedback_false_alarm") {
+        const packet = await store.getReview(reviewId, body.team?.id);
+        if (packet) {
+          evalCreated = await store.saveEvalCase({
+            id: `eval-${randomUUID()}`,
+            sourceReviewId: reviewId,
+            task: actionId === "feedback_missed_issue"
+              ? "detect_missed_review_issue"
+              : "prevent_false_alarm",
+            input: {
+              inputSummary: packet.inputSummary,
+              findings: packet.findings,
+              policyContextIds: packet.policyContext?.map((policy) => policy.id) ?? []
+            },
+            expected: {
+              feedback: actionId,
+              reviewRequired: true
+            },
+            status: "candidate"
+          });
+        }
+      }
       logger("feedback_recorded", {
         actionId,
         reviewId,
@@ -341,7 +367,9 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       });
       await client.chat.postMessage({
         channel: responseChannel,
-        text: "Feedback captured for the SecureLore learning queue."
+        text: evalCreated
+          ? "Feedback captured and a candidate regression eval was created for review."
+          : "Feedback captured for review analytics."
       });
     });
   }
@@ -363,7 +391,7 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         reviewId,
         userId: body.user.id
       });
-      const packet = await store.getReview(reviewId);
+      const packet = await store.getReview(reviewId, body.team?.id);
 
       if (!packet) {
         logger("artifact_missing_review", {
@@ -427,7 +455,7 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     if (body.type !== "block_actions") return;
     const reviewId = getActionValue(body.actions[0]);
     const responseChannel = getResponseChannel(body);
-    const packet = await store.getReview(reviewId);
+    const packet = await store.getReview(reviewId, body.team?.id);
 
     if (!packet) {
       await client.chat.postMessage({
@@ -452,7 +480,7 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
     const reviewId = getActionValue(body.actions[0]);
-    const packet = await store.getReview(reviewId);
+    const packet = await store.getReview(reviewId, body.team?.id);
 
     await client.views.open({
       trigger_id: body.trigger_id,
@@ -503,7 +531,7 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           userId: body.user.id
         });
 
-        const packet = await store.getReview(reviewId);
+        const packet = await store.getReview(reviewId, body.team?.id);
         if (!packet) {
           await client.chat.postMessage({
             channel: body.user.id,
@@ -646,9 +674,18 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           });
           return;
         }
+        if (!body.team?.id) {
+          await client.chat.postMessage({
+            channel: body.user.id,
+            text: "SecureLore could not promote that lesson because the Slack workspace identity was missing."
+          });
+          return;
+        }
 
         await policyContextProvider.promoteLearningExample({
           sourceReviewId: reviewId,
+          slackTeamId: body.team.id,
+          promotedBy: body.user.id,
           kind,
           content: sanitizeLearningLesson(lesson)
         });
@@ -715,7 +752,7 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     await ack();
     if (body.type !== "block_actions") return;
     const reviewId = getActionValue(body.actions[0]);
-    const packet = await store.getReview(reviewId);
+    const packet = await store.getReview(reviewId, body.team?.id);
     if (!packet) {
       await client.chat.postMessage({
         channel: body.user.id,
@@ -778,6 +815,9 @@ function sanitizeLearningLesson(value: string): string {
   return value
     .replace(/xox[baprs]-[A-Za-z0-9-]+/g, "[redacted-slack-token]")
     .replace(/sk-[A-Za-z0-9_-]{20,}/g, "[redacted-api-key]")
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]{20,}/gi, "Bearer [redacted-token]")
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[redacted-jwt]")
+    .replace(/\b((?:api[_ -]?key|client[_ -]?secret|signing[_ -]?secret))\s*[:=]\s*\S+/gi, "$1=[redacted-secret]")
     .replace(/postgresql:\/\/\S+/g, "[redacted-database-url]")
     .slice(0, 1600);
 }

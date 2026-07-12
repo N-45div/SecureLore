@@ -7,7 +7,7 @@ import type { LearningExampleInput } from "@securelore/memory";
 import type { PolicyContext } from "@securelore/review-core";
 
 export interface PolicyContextProvider {
-  retrieve(query: string): Promise<PolicyContext[]>;
+  retrieve(query: string, slackTeamId?: string): Promise<PolicyContext[]>;
   promoteLearningExample?(input: LearningExampleInput): Promise<void>;
 }
 
@@ -27,10 +27,10 @@ export class NeonCoherePolicyContextProvider implements PolicyContextProvider {
     );
   }
 
-  async retrieve(query: string): Promise<PolicyContext[]> {
+  async retrieve(query: string, slackTeamId?: string): Promise<PolicyContext[]> {
     const [chunks, lessons] = await Promise.all([
       this.memory.retrieve(query, 5),
-      this.memory.retrieveLearningExamples(query, 3)
+      slackTeamId ? this.memory.retrieveLearningExamples(query, slackTeamId, 3) : []
     ]);
     return [
       ...chunks.map((chunk) => ({
@@ -48,7 +48,12 @@ export class NeonCoherePolicyContextProvider implements PolicyContextProvider {
         source: "securelore-learning",
         similarity: lesson.similarity,
         excerpt: lesson.content,
-        tags: ["learned", lesson.kind, ...(lesson.sourceReviewId ? [lesson.sourceReviewId] : [])]
+        tags: [
+          "learned",
+          lesson.kind,
+          `promoted-by:${lesson.promotedBy}`,
+          ...(lesson.sourceReviewId ? [lesson.sourceReviewId] : [])
+        ]
       }))
     ];
   }

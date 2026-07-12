@@ -1,5 +1,6 @@
 import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
 import type {
+  EvalCaseInput,
   FeedbackPersistenceInput,
   LearningExampleInput,
   PolicyChunk,
@@ -15,6 +16,7 @@ import { vectorLiteral } from "./vector.js";
 
 export class NeonMemoryStore {
   private readonly sql: NeonQueryFunction<false, false>;
+  private learningSchemaReady?: Promise<void>;
 
   constructor(databaseUrl: string) {
     this.sql = neon(databaseUrl);
@@ -71,10 +73,20 @@ export class NeonMemoryStore {
   }
 
   async saveLearningExample(input: LearningExampleInput, embedding: number[]): Promise<void> {
+    await this.ensureLearningSchema();
     await this.sql`
-      INSERT INTO learning_examples (source_review_id, kind, content, embedding)
+      INSERT INTO learning_examples (
+        source_review_id,
+        slack_team_id,
+        promoted_by,
+        kind,
+        content,
+        embedding
+      )
       VALUES (
         ${input.sourceReviewId ?? null},
+        ${input.slackTeamId},
+        ${input.promotedBy},
         ${input.kind},
         ${input.content},
         ${vectorLiteral(embedding)}::vector
@@ -84,17 +96,22 @@ export class NeonMemoryStore {
 
   async retrieveLearningExamples(
     queryEmbedding: number[],
+    slackTeamId: string,
     limit = 3
   ): Promise<RetrievedLearningExample[]> {
+    await this.ensureLearningSchema();
     const rows = await this.sql`
       SELECT
         id,
         source_review_id,
+        slack_team_id,
+        promoted_by,
         kind,
         content,
         1 - (embedding <=> ${vectorLiteral(queryEmbedding)}::vector) AS similarity
       FROM learning_examples
       WHERE embedding IS NOT NULL
+        AND slack_team_id = ${slackTeamId}
       ORDER BY ((embedding <=> ${vectorLiteral(queryEmbedding)}::vector) + 0)
       LIMIT ${limit}
     `;
@@ -102,10 +119,26 @@ export class NeonMemoryStore {
     return rows.map((row) => ({
       id: String(row.id),
       sourceReviewId: row.source_review_id ? String(row.source_review_id) : undefined,
+      slackTeamId: String(row.slack_team_id),
+      promotedBy: String(row.promoted_by),
       kind: String(row.kind),
       content: String(row.content),
       similarity: Number(row.similarity)
     }));
+  }
+
+  private ensureLearningSchema(): Promise<void> {
+    if (!this.learningSchemaReady) {
+      this.learningSchemaReady = (async () => {
+        await this.sql`ALTER TABLE learning_examples ADD COLUMN IF NOT EXISTS slack_team_id TEXT`;
+        await this.sql`ALTER TABLE learning_examples ADD COLUMN IF NOT EXISTS promoted_by TEXT`;
+        await this.sql`
+          CREATE INDEX IF NOT EXISTS learning_examples_team_idx
+          ON learning_examples (slack_team_id, created_at DESC)
+        `;
+      })();
+    }
+    return this.learningSchemaReady;
   }
 
   async saveReview(input: ReviewPersistenceInput): Promise<void> {
@@ -144,6 +177,21 @@ export class NeonMemoryStore {
         ${input.slackUserId ?? null},
         ${input.slackChannelId ?? null}
       )
+    `;
+  }
+
+  async saveEvalCase(input: EvalCaseInput): Promise<void> {
+    await this.sql`
+      INSERT INTO eval_cases (id, source_review_id, task, input, expected, status)
+      VALUES (
+        ${input.id},
+        ${input.sourceReviewId},
+        ${input.task},
+        ${JSON.stringify(input.input)}::jsonb,
+        ${JSON.stringify(input.expected)}::jsonb,
+        ${input.status ?? "candidate"}
+      )
+      ON CONFLICT (id) DO NOTHING
     `;
   }
 
@@ -201,11 +249,12 @@ export class NeonMemoryStore {
     });
   }
 
-  async getReview(reviewId: string): Promise<ReviewPacket | null> {
+  async getReview(reviewId: string, slackTeamId?: string): Promise<ReviewPacket | null> {
     const rows = await this.sql`
       SELECT packet
       FROM review_sessions
       WHERE id = ${reviewId}
+        AND (${slackTeamId ?? null}::text IS NULL OR slack_team_id = ${slackTeamId ?? null})
       LIMIT 1
     `;
 
