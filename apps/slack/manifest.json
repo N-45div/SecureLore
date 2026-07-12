@@ -20,12 +20,26 @@
       "home_tab_enabled": true,
       "messages_tab_enabled": true,
       "messages_tab_read_only_enabled": false
+    },
+    "assistant_view": {
+      "assistant_description": "Review Slack agents and MCP tools before admin approval",
+      "suggested_prompts": [
+        {
+          "title": "Start a preflight review",
+          "message": "Review a Slack agent"
+        },
+        {
+          "title": "How SecureLore works",
+          "message": "Help"
+        }
+      ]
     }
   },
   "oauth_config": {
     "scopes": {
       "bot": [
         "app_mentions:read",
+        "assistant:write",
         "chat:write",
         "commands",
         "files:read"
@@ -37,6 +51,9 @@
       "request_url": "https://securelore.vercel.app/api/slack/events",
       "bot_events": [
         "app_mention",
+        "assistant_thread_context_changed",
+        "assistant_thread_started",
+        "message.im",
         "file_shared"
       ]
     },

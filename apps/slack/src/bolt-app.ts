@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { App, type Receiver } from "@slack/bolt";
+import { App, Assistant, type Receiver } from "@slack/bolt";
 import { waitUntil } from "@vercel/functions";
 import { enrichReviewPacket } from "@securelore/agent-core";
 import {
@@ -41,6 +41,83 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     appToken: socketMode ? process.env.SLACK_APP_TOKEN : undefined,
     socketMode,
     receiver: options.receiver
+  });
+
+  const assistant = new Assistant({
+    threadStarted: async ({ setSuggestedPrompts, say }) => {
+      await setSuggestedPrompts({
+        title: "Review an agent before admin approval",
+        prompts: [
+          {
+            title: "Start a preflight review",
+            message: "Review a Slack agent"
+          },
+          {
+            title: "How SecureLore works",
+            message: "Help"
+          }
+        ]
+      });
+      await say(
+        "SecureLore reviews real Slack manifests and MCP tools, gathers finding-specific evidence, and creates an admin-ready packet."
+      );
+    },
+    threadContextChanged: async ({ saveThreadContext }) => {
+      await saveThreadContext();
+    },
+    userMessage: async ({ event, say, setStatus, setTitle }) => {
+      const text = "text" in event && typeof event.text === "string"
+        ? event.text.trim().toLowerCase()
+        : "";
+      await setStatus("Preparing SecureLore");
+
+      if (text === "help" || text.includes("how securelore works")) {
+        await setTitle("SecureLore help");
+        await say(
+          "Start a review here, submit a Slack manifest or MCP tools/list response, then use the Review Room to add evidence and generate an admin brief."
+        );
+        return;
+      }
+
+      await setTitle("Slack agent preflight review");
+      await say({
+        text: "Start a policy-grounded review with real Slack and MCP artifacts.",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "*Ready to review an agent?*\nSecureLore will check scopes, endpoints, disclosures, MCP metadata, and required evidence."
+            }
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "Start review"
+                },
+                style: "primary",
+                action_id: "assistant_start_review"
+              }
+            ]
+          }
+        ]
+      });
+    }
+  });
+
+  app.use(assistant.getMiddleware());
+
+  app.action("assistant_start_review", async ({ ack, body, client }) => {
+    await ack();
+    if (body.type !== "block_actions" || !body.trigger_id) return;
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: reviewModal()
+    });
   });
 
   app.command("/securelore", async ({ command, ack, respond }) => {
