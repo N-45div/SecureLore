@@ -18,6 +18,7 @@
     "smoke:agent-offline": "npm run smoke:offline --workspace @securelore/agent-core",
     "smoke:openrouter": "npm run smoke:openrouter --workspace @securelore/agent-core",
     "smoke:review": "npm run smoke --workspace @securelore/review-core",
+    "eval:regression": "npm run eval:regression --workspace @securelore/review-core",
     "smoke:slack-artifacts": "npm run smoke:artifacts --workspace @securelore/slack",
     "smoke:slack-file": "npm run smoke:file --workspace @securelore/slack",
     "smoke:slack-form": "npm run smoke:form --workspace @securelore/slack",

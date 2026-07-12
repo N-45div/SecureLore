@@ -233,10 +233,17 @@ function reviewManifest(
 
   for (const scope of allScopes) {
     if (BROAD_HISTORY_SCOPES.has(scope)) {
-      const hasContextFeature =
-        featureText.includes("summarize") ||
-        featureText.includes("search") ||
-        featureText.includes("context");
+      const hasContextFeature = hasDeclaredHistoryUse(scope, featureText);
+
+      if (scope === "im:history" && hasContextFeature) {
+        scopeJustifications.push({
+          scope,
+          status: "justified",
+          declaredUse: declaredFeatures.join("; "),
+          recommendation: "Keep this scope limited to the tested direct-message workflow."
+        });
+        continue;
+      }
 
       findings.push({
         id: `scope-${scope.replace(/[^a-z0-9]/gi, "-")}`,
@@ -380,6 +387,23 @@ function reviewManifest(
   }
 
   return { findings, recommendedActions, scopeJustifications };
+}
+
+function hasDeclaredHistoryUse(scope: string, featureText: string): boolean {
+  if (scope === "im:history") {
+    return featureText.includes("direct") || featureText.includes(" dm ") || featureText.includes("message");
+  }
+  if (scope === "mpim:history") {
+    return featureText.includes("multi-party") || featureText.includes("group dm");
+  }
+  if (scope === "groups:history") {
+    return featureText.includes("private channel") || featureText.includes("private context");
+  }
+  return (
+    featureText.includes("channel context") ||
+    featureText.includes("search channel") ||
+    featureText.includes("summarize channel")
+  );
 }
 
 function reviewMcpTools(toolsList: McpToolsListLike): {
