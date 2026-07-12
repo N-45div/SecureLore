@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
+import assert from "node:assert/strict";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { reviewArtifacts } from "../src/index.js";
+import { applyEvidenceAssessment, reviewArtifacts } from "../src/index.js";
 import type { McpToolsListLike, SlackManifestLike } from "../src/index.js";
 
 const currentDir = fileURLToPath(new URL(".", import.meta.url));
@@ -21,4 +22,36 @@ const packet = reviewArtifacts({
   fixtureIds: ["sg-001-broad-history-scopes", "sg-004-mcp-vague-write-tool"]
 });
 
-console.log(JSON.stringify(packet, null, 2));
+const evidenceResolved = applyEvidenceAssessment(packet, "scope-channels-history", {
+  decision: "sufficient",
+  rationale: "The tested feature searches only channels the requesting user can access and retains no message content.",
+  evaluatedBy: "securelore-smoke",
+  evaluatedAt: new Date().toISOString()
+});
+assert.equal(
+  evidenceResolved.findings.find((finding) => finding.id === "scope-channels-history")?.resolution?.status,
+  "resolved"
+);
+assert.match(evidenceResolved.overallRisk.summary, /resolved by evidence/);
+
+const artifactBlocker = applyEvidenceAssessment(packet, "insecure-slack-endpoints", {
+  decision: "sufficient",
+  rationale: "The builder says deployment will happen later.",
+  evaluatedBy: "securelore-smoke",
+  evaluatedAt: new Date().toISOString()
+});
+assert.equal(
+  artifactBlocker.findings.find((finding) => finding.id === "insecure-slack-endpoints")?.resolution?.status,
+  "evidence_submitted"
+);
+
+console.log(JSON.stringify({
+  grade: packet.overallRisk.grade,
+  findings: packet.findings.length,
+  evidenceResolution: evidenceResolved.findings.find(
+    (finding) => finding.id === "scope-channels-history"
+  )?.resolution?.status,
+  artifactGuard: artifactBlocker.findings.find(
+    (finding) => finding.id === "insecure-slack-endpoints"
+  )?.resolution?.status
+}, null, 2));

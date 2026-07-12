@@ -1,4 +1,10 @@
-import type { GeneratedArtifact, ReviewPacket } from "@securelore/review-core";
+import type {
+  EvidenceAssessment,
+  Finding,
+  GeneratedArtifact,
+  PolicyContext,
+  ReviewPacket
+} from "@securelore/review-core";
 import { completeJson } from "./openrouter.js";
 
 export interface EnrichmentOptions {
@@ -12,6 +18,73 @@ interface EnrichmentResponse {
   privacyDisclosure: string;
   aiDisclosure: string;
   reviewerQuestions: string[];
+}
+
+interface EvidenceAssessmentResponse {
+  decision: "sufficient" | "insufficient";
+  rationale: string;
+}
+
+export async function evaluateFindingEvidence(
+  finding: Finding,
+  evidence: string,
+  policyContext: PolicyContext[] = [],
+  options: EnrichmentOptions = {}
+): Promise<EvidenceAssessment> {
+  const evaluatedAt = new Date().toISOString();
+  if (finding.fixability !== "needs_clarification") {
+    return {
+      decision: "insufficient",
+      rationale: "This finding requires corrected artifacts and cannot be resolved by narrative evidence.",
+      evaluatedBy: "securelore-deterministic-guard",
+      evaluatedAt
+    };
+  }
+  if (!options.openRouterApiKey) {
+    return {
+      decision: "not_evaluated",
+      rationale: "Evidence was captured but model-assisted evaluation is unavailable.",
+      evaluatedBy: "securelore-agent",
+      evaluatedAt
+    };
+  }
+
+  const result = await completeJson<EvidenceAssessmentResponse>(
+    [
+      {
+        role: "system",
+        content: [
+          "You evaluate evidence for one Slack app review finding.",
+          "Accept only concrete, testable evidence that directly answers the finding.",
+          "A feature claim without controls, behavior, or verification is insufficient.",
+          "Do not override Slack policy and do not resolve artifact-fix findings.",
+          "Return strict JSON with decision sufficient or insufficient and a concise rationale."
+        ].join(" ")
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          finding,
+          evidence,
+          policyContext: policyContext.slice(0, 6).map((policy) => ({
+            id: policy.id,
+            excerpt: policy.excerpt.slice(0, 700)
+          }))
+        })
+      }
+    ],
+    {
+      apiKey: options.openRouterApiKey,
+      model: options.model
+    }
+  );
+
+  return {
+    decision: result.decision === "sufficient" ? "sufficient" : "insufficient",
+    rationale: result.rationale,
+    evaluatedBy: "securelore-agent",
+    evaluatedAt
+  };
 }
 
 export async function enrichReviewPacket(

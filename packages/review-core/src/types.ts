@@ -30,6 +30,19 @@ export interface Finding {
   policyCitations?: string[];
   confidence: "low" | "medium" | "high";
   fixability: "manual" | "automatic" | "needs_clarification";
+  resolution?: {
+    status: "evidence_submitted" | "resolved" | "accepted_risk";
+    rationale: string;
+    evaluatedBy: string;
+    evaluatedAt: string;
+  };
+}
+
+export interface EvidenceAssessment {
+  decision: "sufficient" | "insufficient" | "not_evaluated";
+  rationale: string;
+  evaluatedBy: string;
+  evaluatedAt: string;
 }
 
 export interface ScopeJustification {

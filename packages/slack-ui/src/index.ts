@@ -31,7 +31,11 @@ const SEVERITY_LABEL: Record<Severity, string> = {
 
 export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
   const topFindings = packet.findings
-    .filter((finding) => finding.severity === "blocker" || finding.severity === "warn")
+    .filter((finding) =>
+      (finding.severity === "blocker" || finding.severity === "warn") &&
+      finding.resolution?.status !== "resolved" &&
+      finding.resolution?.status !== "accepted_risk"
+    )
     .slice(0, 8);
 
   const blocks: SlackBlock[] = [
@@ -227,10 +231,16 @@ export function renderReviewRoom(
   evidence: ReviewEvidenceSummary[] = []
 ): SlackBlock[] {
   const evidenceQuestions = packet.findings
-    .filter((finding) => finding.fixability === "needs_clarification")
+    .filter((finding) =>
+      finding.fixability === "needs_clarification" && finding.resolution?.status !== "resolved"
+    )
     .slice(0, 4);
-  const blockers = packet.findings.filter((finding) => finding.severity === "blocker").length;
-  const warnings = packet.findings.filter((finding) => finding.severity === "warn").length;
+  const activeFindings = packet.findings.filter((finding) =>
+    finding.resolution?.status !== "resolved" && finding.resolution?.status !== "accepted_risk"
+  );
+  const blockers = activeFindings.filter((finding) => finding.severity === "blocker").length;
+  const warnings = activeFindings.filter((finding) => finding.severity === "warn").length;
+  const resolved = packet.findings.filter((finding) => finding.resolution?.status === "resolved");
   const evidenceQuestionIds = new Set(evidence.map((item) => item.questionId).filter(Boolean));
   const learnedLessons = (packet.policyContext ?? []).filter(
     (policy) => policy.source === "securelore-learning"
@@ -293,6 +303,19 @@ export function renderReviewRoom(
               : "General evidence";
             return `• *${label}:* ${truncateInline(item.evidence, 220)}`;
           })
+          .join("\n")}`
+      }
+    });
+  }
+
+  if (resolved.length > 0) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*Resolved by evidence*\n${resolved
+          .slice(0, 4)
+          .map((finding) => `• *${finding.title}* - ${finding.resolution?.rationale ?? "Evidence accepted."}`)
           .join("\n")}`
       }
     });

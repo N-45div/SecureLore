@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { App, Assistant, type Receiver } from "@slack/bolt";
 import { waitUntil } from "@vercel/functions";
-import { enrichReviewPacket } from "@securelore/agent-core";
+import { enrichReviewPacket, evaluateFindingEvidence } from "@securelore/agent-core";
 import {
   renderAppHome,
   renderAdminBriefWithEvidence,
@@ -11,7 +11,12 @@ import {
   renderReviewPacket,
   renderReviewRoom
 } from "@securelore/slack-ui";
-import type { GeneratedArtifact, ReviewPacket } from "@securelore/review-core";
+import {
+  applyEvidenceAssessment,
+  type EvidenceAssessment,
+  type GeneratedArtifact,
+  type ReviewPacket
+} from "@securelore/review-core";
 import {
   classifySlackFileJson,
   downloadSlackFileJson,
@@ -501,14 +506,58 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           return;
         }
 
+        const finding = questionId
+          ? packet.findings.find((candidate) => candidate.id === questionId)
+          : undefined;
+        let updatedPacket = packet;
+        let assessment: EvidenceAssessment = {
+          decision: "not_evaluated",
+          rationale: questionId
+            ? "The related finding was not available for evaluation."
+            : "General evidence was stored without resolving a specific finding.",
+          evaluatedBy: "securelore-agent",
+          evaluatedAt: new Date().toISOString()
+        };
+
+        if (finding) {
+          try {
+            assessment = await evaluateFindingEvidence(
+              finding,
+              evidence,
+              packet.policyContext,
+              {
+                openRouterApiKey: process.env.OPENROUTER_API_KEY,
+                model: process.env.OPENROUTER_MODEL
+              }
+            );
+          } catch (error) {
+            assessment = {
+              decision: "not_evaluated",
+              rationale: `Evidence was saved, but evaluation failed: ${error instanceof Error ? error.message : "unknown error"}`,
+              evaluatedBy: "securelore-agent",
+              evaluatedAt: new Date().toISOString()
+            };
+          }
+          updatedPacket = applyEvidenceAssessment(packet, finding.id, assessment);
+          await store.saveReview(updatedPacket, {
+            slackTeamId: body.team?.id,
+            slackUserId: body.user.id
+          });
+        }
+
         await client.chat.postMessage({
           channel: body.user.id,
-          text: `Evidence captured for ${reviewId}.`
+          text: [
+            `Evidence captured for ${reviewId}.`,
+            assessment.decision === "sufficient"
+              ? "The related finding was resolved and the risk grade was recalculated."
+              : assessment.rationale
+          ].join(" ")
         });
         await postReviewRoom({
           client,
           channel: body.user.id,
-          packet,
+          packet: updatedPacket,
           store,
           logger
         });
@@ -797,7 +846,10 @@ function reviewModal() {
 
 function evidenceModal(reviewId: string, packet?: ReviewPacket) {
   const findingOptions = (packet?.findings ?? [])
-    .filter((finding) => finding.severity === "blocker" || finding.severity === "warn")
+    .filter((finding) =>
+      (finding.severity === "blocker" || finding.severity === "warn") &&
+      finding.resolution?.status !== "resolved"
+    )
     .slice(0, 10)
     .map((finding) => ({
       text: {

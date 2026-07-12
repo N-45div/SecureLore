@@ -241,10 +241,16 @@ export class NeonMemoryStore {
 
     return rows.map((row) => {
       const packet = row.packet as {
-        findings?: Array<{ severity?: string }>;
+        findings?: Array<{
+          severity?: string;
+          resolution?: { status?: string };
+        }>;
         inputSummary?: { artifactTypes?: string[] };
       };
-      const findings = packet.findings ?? [];
+      const findings = (packet.findings ?? []).filter((finding) =>
+        finding.resolution?.status !== "resolved" &&
+        finding.resolution?.status !== "accepted_risk"
+      );
       return {
         id: String(row.id),
         grade: String(row.grade),

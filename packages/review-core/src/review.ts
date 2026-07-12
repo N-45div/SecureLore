@@ -1,4 +1,5 @@
 import type {
+  EvidenceAssessment,
   Finding,
   McpToolReview,
   McpToolsListLike,
@@ -8,6 +9,55 @@ import type {
   ScopeJustification,
   SlackManifestLike
 } from "./types.js";
+
+export function applyEvidenceAssessment(
+  packet: ReviewPacket,
+  findingId: string,
+  assessment: EvidenceAssessment
+): ReviewPacket {
+  const target = packet.findings.find((finding) => finding.id === findingId);
+  if (!target) throw new Error(`Finding ${findingId} was not found.`);
+
+  const canResolve = target.fixability === "needs_clarification";
+  const resolved = assessment.decision === "sufficient" && canResolve;
+  const findings = packet.findings.map((finding) => finding.id === findingId
+    ? {
+        ...finding,
+        resolution: {
+          status: resolved ? "resolved" as const : "evidence_submitted" as const,
+          rationale: canResolve
+            ? assessment.rationale
+            : "This finding requires corrected artifacts and cannot be resolved by narrative evidence alone.",
+          evaluatedBy: assessment.evaluatedBy,
+          evaluatedAt: assessment.evaluatedAt
+        }
+      }
+    : finding);
+  const grade = computeRiskGrade(findings);
+
+  return {
+    ...packet,
+    findings,
+    overallRisk: {
+      grade,
+      summary: summarizeRisk(grade, findings)
+    },
+    scopeJustifications: packet.scopeJustifications?.map((scope) =>
+      findingId === `scope-${scope.scope.replace(/[^a-z0-9]/gi, "-")}` && resolved
+        ? {
+            ...scope,
+            status: "justified" as const,
+            recommendation: "Evidence accepted. Keep the declared use and controls aligned with the tested workflow."
+          }
+        : scope
+    ),
+    generatedArtifacts: packet.generatedArtifacts?.map((artifact) =>
+      artifact.type === "admin_approval_brief"
+        ? { ...artifact, content: generateAdminBrief(grade, findings) }
+        : artifact
+    )
+  };
+}
 
 const BROAD_HISTORY_SCOPES = new Set([
   "channels:history",
@@ -407,8 +457,9 @@ function findMissingArtifacts(manifest?: SlackManifestLike): string[] {
 }
 
 function computeRiskGrade(findings: Finding[]): ReviewPacket["overallRisk"]["grade"] {
-  const blockerCount = findings.filter((finding) => finding.severity === "blocker").length;
-  const warnCount = findings.filter((finding) => finding.severity === "warn").length;
+  const active = activeFindings(findings);
+  const blockerCount = active.filter((finding) => finding.severity === "blocker").length;
+  const warnCount = active.filter((finding) => finding.severity === "warn").length;
   if (blockerCount >= 4) return "reject";
   if (blockerCount > 0) return "high";
   if (warnCount > 0) return "medium";
@@ -419,10 +470,18 @@ function summarizeRisk(
   grade: ReviewPacket["overallRisk"]["grade"],
   findings: Finding[]
 ): string {
-  const blockers = findings.filter((finding) => finding.severity === "blocker").length;
-  const warnings = findings.filter((finding) => finding.severity === "warn").length;
+  const active = activeFindings(findings);
+  const blockers = active.filter((finding) => finding.severity === "blocker").length;
+  const warnings = active.filter((finding) => finding.severity === "warn").length;
+  const resolved = findings.length - active.length;
   if (grade === "low") return "No blocking issues were found in the submitted artifacts.";
-  return `${blockers} blocker(s) and ${warnings} warning(s) found. Address blockers before submitting or asking admins to approve the app.`;
+  return `${blockers} blocker(s) and ${warnings} warning(s) remain${resolved ? `; ${resolved} finding(s) resolved by evidence` : ""}. Address blockers before submitting or asking admins to approve the app.`;
+}
+
+function activeFindings(findings: Finding[]): Finding[] {
+  return findings.filter((finding) =>
+    finding.resolution?.status !== "resolved" && finding.resolution?.status !== "accepted_risk"
+  );
 }
 
 function dedupeActions(actions: RecommendedAction[]): RecommendedAction[] {
@@ -438,8 +497,10 @@ function generateAdminBrief(
   grade: ReviewPacket["overallRisk"]["grade"],
   findings: Finding[]
 ): string {
-  const blockers = findings.filter((finding) => finding.severity === "blocker");
-  const warnings = findings.filter((finding) => finding.severity === "warn");
+  const active = activeFindings(findings);
+  const blockers = active.filter((finding) => finding.severity === "blocker");
+  const warnings = active.filter((finding) => finding.severity === "warn");
+  const resolved = findings.filter((finding) => finding.resolution?.status === "resolved");
   return [
     `SecureLore risk grade: ${grade.toUpperCase()}.`,
     blockers.length > 0
@@ -448,6 +509,9 @@ function generateAdminBrief(
     warnings.length > 0
       ? `Warnings: ${warnings.map((finding) => finding.title).join("; ")}.`
       : "No warnings found.",
+    resolved.length > 0
+      ? `Resolved by reviewed evidence: ${resolved.map((finding) => finding.title).join("; ")}.`
+      : "No findings have been resolved by evidence.",
     "Admin recommendation: approve only after blockers are resolved and remaining sensitive scopes are mapped to tested user-visible features."
   ].join(" ");
 }

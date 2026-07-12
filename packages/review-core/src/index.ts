@@ -1,6 +1,7 @@
-export { reviewArtifacts } from "./review.js";
+export { applyEvidenceAssessment, reviewArtifacts } from "./review.js";
 export type {
   ArtifactType,
+  EvidenceAssessment,
   Finding,
   FindingCategory,
   GeneratedArtifact,

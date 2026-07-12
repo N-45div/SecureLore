@@ -196,6 +196,19 @@
         },
         "fixability": {
           "enum": ["manual", "automatic", "needs_clarification"]
+        },
+        "resolution": {
+          "type": "object",
+          "required": ["status", "rationale", "evaluatedBy", "evaluatedAt"],
+          "properties": {
+            "status": {
+              "enum": ["evidence_submitted", "resolved", "accepted_risk"]
+            },
+            "rationale": { "type": "string" },
+            "evaluatedBy": { "type": "string" },
+            "evaluatedAt": { "type": "string", "format": "date-time" }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
