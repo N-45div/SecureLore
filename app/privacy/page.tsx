@@ -4,7 +4,7 @@ const rows = [
   {
     label: "Slack data collected",
     value:
-      "Slack user, team, and channel identifiers needed to save review context; submitted manifests, MCP tools/list JSON, generated review packets, feedback, and evidence entered by users."
+      "Slack user, team, and channel identifiers needed to save review context; submitted manifests, MCP tools/list JSON, structured app disclosures, artifact fingerprints, generated review packets, feedback, and evidence entered by users."
   },
   {
     label: "How data is used",

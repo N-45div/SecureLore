@@ -26,6 +26,14 @@ const workflows = [
   {
     title: "Workspace Evidence Scout",
     body: "Use Slack Real-Time Search on explicit request to find cited public-channel precedent without copying search results into SecureLore storage."
+  },
+  {
+    title: "Version-bound approval",
+    body: "Bind every reviewer decision to a SHA-256 fingerprint and mark approval stale when the manifest, tools, disclosures, or policy context changes."
+  },
+  {
+    title: "Admin approval queue",
+    body: "Route reviews to configured Slack reviewers and an approval channel without requesting broad Slack admin scopes."
   }
 ];
 

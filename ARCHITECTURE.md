@@ -19,6 +19,7 @@ flowchart LR
   OpenRouter --> Packet
   Packet --> Evidence[Evidence scoring and regrading]
   Evidence --> Decision[Human decision gate]
+  Decision --> Fingerprint[Decision bound to SHA-256 artifact fingerprint]
   Packet --> SlackUI[Block Kit review packet]
   RTS --> LiveEvidence[Zero-copy cited workspace precedent]
   SlackUI --> Builder
@@ -44,7 +45,9 @@ sequenceDiagram
   A->>N: Link parent and corrected review
   A->>S: Show resolved, remaining, and new findings
   U->>S: Record human decision
-  A->>N: Persist actor, rationale, and timestamp
+  A->>N: Persist actor, rationale, timestamp, and artifact fingerprint
+  U->>S: Request admin review
+  A->>S: Route packet to configured approval channel
   U->>S: Promote sanitized lesson
   S->>A: lesson modal submission
   A->>C: Embed sanitized lesson
@@ -72,6 +75,9 @@ flowchart TB
   UserQuery[Explicit workspace evidence request] --> RTS[Slack Real-Time Search]
   RTS --> LiveResults[Live cited public-channel results]
   LiveResults -. never persisted or embedded .-> NoCopy[Zero-copy boundary]
+  ReviewContext[Structured context outside Slack manifest] --> Fingerprint[Canonical artifact fingerprint]
+  Fingerprint --> Decision[Version-bound decision]
+  Changed[Corrected artifact or policy change] --> Stale[Prior approval becomes stale]
 ```
 
 ## Real-Time Search Flow
@@ -101,6 +107,7 @@ flowchart TD
     Modal[Review, evidence, and lesson modals]
     Home[App Home dashboard]
     Room[Review Room]
+    Queue[Admin approval queue]
   end
 
   subgraph App_Runtime[Vercel + Bolt runtime]
@@ -114,6 +121,8 @@ flowchart TD
     Enrichment[OpenRouter enrichment]
     Memory[Policy and learning retrieval]
     RTS[Slack Real-Time Search]
+    Policy[Workspace governance policy]
+    Fingerprint[Artifact fingerprint and drift]
   end
 
   subgraph Storage[Storage]
@@ -131,6 +140,8 @@ flowchart TD
   Handlers --> Enrichment
   Handlers --> Memory
   Handlers --> RTS
+  Handlers --> Policy
+  Handlers --> Fingerprint
   Memory --> Policies
   Memory --> Lessons
   Lessons -. scoped by Slack team .-> Memory

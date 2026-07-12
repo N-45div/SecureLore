@@ -166,6 +166,64 @@ check(
   "workspace-policy-requires-runtime-proof",
   policyBlocked.findings.some((finding) => finding.id === "workspace-policy-runtime-evidence")
 );
+const repeatedFixed = reviewArtifacts({
+  manifest: fixedManifest,
+  mcpTools: fixedTools,
+  reviewContext: fixedContext
+});
+check("artifact-fingerprint-is-deterministic", repeatedFixed.artifactFingerprint === fixed.artifactFingerprint);
+check(
+  "human-review-control-clears-consequential-blocker",
+  !fixed.findings.some((finding) => finding.id === "consequential-actions-missing-human-review")
+);
+const contradictedRuntime = reviewArtifacts({
+  manifest: fixedManifest,
+  reviewContext: {
+    ...fixedContext,
+    runtimeEvidence: [{
+      kind: "request_signing",
+      status: "contradicted",
+      description: "Unsigned requests were accepted during a production probe."
+    }]
+  }
+});
+check(
+  "contradicted-runtime-proof-is-blocker",
+  contradictedRuntime.findings.some(
+    (finding) => finding.id === "runtime-request_signing" && finding.severity === "blocker"
+  )
+);
+const unverifiedRuntime = reviewArtifacts({
+  manifest: fixedManifest,
+  reviewContext: {
+    ...fixedContext,
+    runtimeEvidence: [{
+      kind: "endpoint_health",
+      status: "not_verified",
+      description: "The production endpoint has not been probed."
+    }]
+  }
+});
+check(
+  "unverified-runtime-proof-is-warning",
+  unverifiedRuntime.findings.some(
+    (finding) => finding.id === "runtime-endpoint_health" && finding.severity === "warn"
+  )
+);
+const reviewRequired = reviewArtifacts({
+  manifest: fixedManifest,
+  reviewContext: {
+    ...fixedContext,
+    workspacePolicy: {
+      name: "Agent review policy",
+      reviewRequiredScopes: ["im:history"]
+    }
+  }
+});
+check(
+  "workspace-policy-flags-review-required-scope",
+  reviewRequired.findings.some((finding) => finding.id === "workspace-policy-review-im-history")
+);
 
 const passed = checks.filter((item) => item.passed).length;
 const expectedDetected = expectedBlockers.filter((id) => badIds.has(id)).length;

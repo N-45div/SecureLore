@@ -10,6 +10,8 @@ SecureLore reviews real Slack app and MCP artifacts, then creates an admin-ready
 
 - Slack Agent/Assistant experience with native onboarding and thread status
 - zero-copy Workspace Evidence Scout using Slack Real-Time Search
+- official Slack manifests plus separate structured review context
+- SHA-256 artifact fingerprints and stale-approval detection
 - risk grade with blockers and warnings
 - OAuth scope justification table
 - MCP tool safety review
@@ -19,11 +21,15 @@ SecureLore reviews real Slack app and MCP artifacts, then creates an admin-ready
 - Review Room with finding-specific evidence quality scoring and regrading
 - corrected-artifact lineage with resolved, remaining, and new findings
 - auditable human decisions that cannot approve unresolved blockers
+- reviewer allowlist and workspace admin approval queue without `admin.*` scopes
+- workspace policy overlays and runtime verification evidence
 - tenant-scoped retrieval learning and candidate regression evals
 
 The product is intentionally Slack-native. Builders run `/securelore review`, paste or upload artifacts, search live workspace precedent, add evidence in Slack, promote sanitized lessons, and reopen reviews from App Home.
 
 Workspace Evidence Scout is user-triggered and searches public-channel messages through Slack's `assistant.search.context` method. It uses the event's short-lived `action_token`, returns cited Slack permalinks, and does not persist, embed, train on, or automatically accept RTS results as review evidence.
+
+SecureLore never adds custom properties to a Slack manifest. Feature declarations, public pages, AI disclosures, scope mappings, consequential actions, human controls, and runtime proof are collected as a separate review context. A canonical SHA-256 fingerprint binds every decision to the exact manifest, MCP tool list, and review context that was evaluated.
 
 ## Why It Matters
 
@@ -59,6 +65,7 @@ flowchart LR
   LLM --> Packet
   RTS --> Live[Zero-copy cited precedent]
   Packet --> SlackUI[Block Kit UI]
+  Packet --> Fingerprint[Version-bound approval fingerprint]
   SlackUI --> Slack
 ```
 
@@ -76,6 +83,7 @@ Detailed diagrams are in [ARCHITECTURE.md](ARCHITECTURE.md).
 - Cohere embeddings for policy and lesson retrieval
 - OpenRouter for LLM-assisted review enrichment
 - Executable regression benchmark for blocker recall, false positives, evidence guardrails, remediation, and human decisions
+- Configured reviewer allowlist and approval channel for a fail-closed builder-to-admin handoff
 
 ## Public Pages
 
@@ -110,6 +118,8 @@ sequenceDiagram
   B->>S: Submit corrected artifacts
   A->>S: Show before/after grade and finding diff
   B->>S: Record human decision
+  B->>S: Request configured admin review
+  A->>S: Post fingerprinted packet to approval queue
   B->>S: Promote sanitized lesson
   A->>M: Store embedded learning example
 ```
@@ -127,6 +137,8 @@ npm run smoke:slack-home
 npm run smoke:slack-rts
 npm run eval:regression
 ```
+
+Configure `SLACK_REVIEWER_IDS` with comma-separated Slack user IDs and `SLACK_APPROVAL_CHANNEL_ID` with the channel that receives approval requests. Optional `SECURELORE_WORKSPACE_POLICY_JSON` can block scopes, require reviewer attention, and require runtime proof without requesting Slack admin scopes.
 
 ## Production Endpoints
 
@@ -147,7 +159,7 @@ SecureLore uses two hackathon technologies: the Slack Agent experience and the R
 
 ## Quality Evidence
 
-`npm run eval:regression` runs an 18-check controlled regression benchmark covering expected blocker recall, a corrected low-risk sample, MCP metadata, sensitive-scope evidence, evidence-resolution guardrails, review lineage, and human approval rules. The current controlled suite passes 18/18 with zero blocker false positives on the fixed sample. These figures describe the repository fixtures, not general-world accuracy.
+`npm run eval:regression` runs a controlled benchmark covering blocker recall, a corrected low-risk sample, MCP metadata, sensitive-scope evidence, evidence-resolution guardrails, review lineage, artifact fingerprints, stale approvals, consequential actions, runtime proof, and workspace policy enforcement. These figures describe repository fixtures, not general-world accuracy.
 
 ## License
 
