@@ -6,7 +6,7 @@ SecureLore is a Slack-native review workflow for teams building Slack agents, MC
 
 ```mermaid
 flowchart LR
-  Builder[Slack builder or admin] -->|/securelore review| Slack[Slack workspace]
+  Builder[Slack builder or reviewer] --> Slack[Slack Agent UI, command, App Home]
   Slack -->|command, modal, actions| Vercel[Vercel HTTPS endpoints]
   Vercel --> Bolt[Bolt for JavaScript app]
   Bolt --> ReviewCore[review-core deterministic checks]
@@ -16,6 +16,8 @@ flowchart LR
   Bolt --> OpenRouter[OpenRouter LLM enrichment]
   ReviewCore --> Packet[Structured review packet]
   OpenRouter --> Packet
+  Packet --> Evidence[Evidence scoring and regrading]
+  Evidence --> Decision[Human decision gate]
   Packet --> SlackUI[Block Kit review packet]
   SlackUI --> Builder
 ```
@@ -32,8 +34,14 @@ sequenceDiagram
 
   U->>S: Add evidence to a finding
   S->>A: block_actions + modal submission
-  A->>N: Store review-specific evidence
-  A->>S: Repost Review Room with latest evidence
+  A->>A: Score relevance, specificity, testability, policy alignment
+  A->>N: Store evidence and regraded packet
+  A->>S: Repost Review Room with rationale and updated risk
+  U->>S: Submit corrected artifacts
+  A->>N: Link parent and corrected review
+  A->>S: Show resolved, remaining, and new findings
+  U->>S: Record human decision
+  A->>N: Persist actor, rationale, and timestamp
   U->>S: Promote sanitized lesson
   S->>A: lesson modal submission
   A->>C: Embed sanitized lesson
@@ -48,12 +56,13 @@ sequenceDiagram
 
 ```mermaid
 flowchart TB
-  Inputs[Manifest JSON, MCP tools/list JSON, evidence] --> ReviewData[Review records and artifacts]
+  Inputs[Manifest JSON, MCP tools/list JSON, evidence] --> ReviewData[Workspace-scoped review records]
   ReviewData --> Neon[(Neon Postgres)]
   Inputs --> Redaction[Sanitized lesson promotion]
   Redaction --> Learned[Learning examples]
   Learned --> Neon
   Learned --> Retrieval[Future retrieval context]
+  Feedback[Missed issue or false alarm] --> Eval[(Candidate regression eval)]
   Retrieval --> LLM[LLM review enrichment]
   Inputs -. not used for training .-> NoTraining[No model training]
   LLM -. output only .-> ReviewPacket[Review packet]
@@ -64,6 +73,7 @@ flowchart TB
 ```mermaid
 flowchart TD
   subgraph Slack_Surface[Slack surface]
+    Agent[Agent/Assistant conversation]
     Slash[/securelore review/]
     Modal[Review, evidence, and lesson modals]
     Home[App Home dashboard]
@@ -86,6 +96,7 @@ flowchart TD
     Sessions[(review_sessions)]
     Artifacts[(review_artifacts)]
     Feedback[(feedback_events)]
+    Evals[(eval_cases)]
     Lessons[(learning_examples)]
     Policies[(policy_chunks)]
   end
@@ -97,6 +108,7 @@ flowchart TD
   Handlers --> Memory
   Memory --> Policies
   Memory --> Lessons
+  Lessons -. scoped by Slack team .-> Memory
   Handlers --> Sessions
   Handlers --> Artifacts
   Handlers --> Feedback
