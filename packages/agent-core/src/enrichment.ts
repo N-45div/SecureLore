@@ -23,6 +23,12 @@ interface EnrichmentResponse {
 interface EvidenceAssessmentResponse {
   decision: "sufficient" | "insufficient";
   rationale: string;
+  quality?: {
+    relevance?: number;
+    specificity?: number;
+    testability?: number;
+    policyAlignment?: number;
+  };
 }
 
 export async function evaluateFindingEvidence(
@@ -57,6 +63,7 @@ export async function evaluateFindingEvidence(
           "You evaluate evidence for one Slack app review finding.",
           "Accept only concrete, testable evidence that directly answers the finding.",
           "A feature claim without controls, behavior, or verification is insufficient.",
+          "Score evidence quality from 0 to 5 for relevance, specificity, testability, and policyAlignment.",
           "Do not override Slack policy and do not resolve artifact-fix findings.",
           "Return strict JSON with decision sufficient or insufficient and a concise rationale."
         ].join(" ")
@@ -83,7 +90,19 @@ export async function evaluateFindingEvidence(
     decision: result.decision === "sufficient" ? "sufficient" : "insufficient",
     rationale: result.rationale,
     evaluatedBy: "securelore-agent",
-    evaluatedAt
+    evaluatedAt,
+    quality: normalizeEvidenceQuality(result.quality)
+  };
+}
+
+function normalizeEvidenceQuality(value: EvidenceAssessmentResponse["quality"]): EvidenceAssessment["quality"] {
+  const score = (candidate: number | undefined) =>
+    Math.max(0, Math.min(5, Number.isFinite(candidate) ? Number(candidate) : 0));
+  return {
+    relevance: score(value?.relevance),
+    specificity: score(value?.specificity),
+    testability: score(value?.testability),
+    policyAlignment: score(value?.policyAlignment)
   };
 }
 

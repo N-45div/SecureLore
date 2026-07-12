@@ -35,6 +35,12 @@ export interface Finding {
     rationale: string;
     evaluatedBy: string;
     evaluatedAt: string;
+    quality?: {
+      relevance: number;
+      specificity: number;
+      testability: number;
+      policyAlignment: number;
+    };
   };
 }
 
@@ -43,6 +49,12 @@ export interface EvidenceAssessment {
   rationale: string;
   evaluatedBy: string;
   evaluatedAt: string;
+  quality?: {
+    relevance: number;
+    specificity: number;
+    testability: number;
+    policyAlignment: number;
+  };
 }
 
 export interface ScopeJustification {

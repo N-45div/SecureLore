@@ -71,7 +71,7 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
         type: "mrkdwn",
         text: `*Policy memory used*\n${packet.policyContext
           .slice(0, 3)
-          .map((policy) => `• ${policy.title} (${policy.id})`)
+          .map((policy) => `• ${policy.title} (${policy.sourceUrl ?? policy.id})`)
           .join("\n")}`
       }
     });
@@ -337,7 +337,13 @@ export function renderReviewRoom(
         type: "mrkdwn",
         text: `*Resolved by evidence*\n${resolved
           .slice(0, 4)
-          .map((finding) => `• *${finding.title}* - ${finding.resolution?.rationale ?? "Evidence accepted."}`)
+          .map((finding) => {
+            const quality = finding.resolution?.quality;
+            const score = quality
+              ? ` Quality ${Object.values(quality).reduce((sum, value) => sum + value, 0).toFixed(1)}/20.`
+              : "";
+            return `• *${finding.title}* - ${finding.resolution?.rationale ?? "Evidence accepted."}${score}`;
+          })
           .join("\n")}`
       }
     });

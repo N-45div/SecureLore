@@ -226,7 +226,18 @@
             },
             "rationale": { "type": "string" },
             "evaluatedBy": { "type": "string" },
-            "evaluatedAt": { "type": "string", "format": "date-time" }
+            "evaluatedAt": { "type": "string", "format": "date-time" },
+            "quality": {
+              "type": "object",
+              "required": ["relevance", "specificity", "testability", "policyAlignment"],
+              "properties": {
+                "relevance": { "type": "number", "minimum": 0, "maximum": 5 },
+                "specificity": { "type": "number", "minimum": 0, "maximum": 5 },
+                "testability": { "type": "number", "minimum": 0, "maximum": 5 },
+                "policyAlignment": { "type": "number", "minimum": 0, "maximum": 5 }
+              },
+              "additionalProperties": false
+            }
           },
           "additionalProperties": false
         }

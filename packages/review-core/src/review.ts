@@ -30,7 +30,8 @@ export function applyEvidenceAssessment(
             ? assessment.rationale
             : "This finding requires corrected artifacts and cannot be resolved by narrative evidence alone.",
           evaluatedBy: assessment.evaluatedBy,
-          evaluatedAt: assessment.evaluatedAt
+          evaluatedAt: assessment.evaluatedAt,
+          quality: assessment.quality
         }
       }
     : finding);
