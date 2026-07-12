@@ -77,5 +77,6 @@ export interface ReviewSummary {
   warningCount: number;
   evidenceCount: number;
   artifactTypes: string[];
+  decisionStatus?: string;
   createdAt: string;
 }

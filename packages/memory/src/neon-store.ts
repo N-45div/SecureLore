@@ -295,6 +295,7 @@ export class NeonMemoryStore {
           resolution?: { status?: string };
         }>;
         inputSummary?: { artifactTypes?: string[] };
+        decision?: { status?: string };
       };
       const findings = (packet.findings ?? []).filter((finding) =>
         finding.resolution?.status !== "resolved" &&
@@ -308,6 +309,7 @@ export class NeonMemoryStore {
         warningCount: findings.filter((finding) => finding.severity === "warn").length,
         evidenceCount: Number(row.evidence_count ?? 0),
         artifactTypes: packet.inputSummary?.artifactTypes ?? [],
+        decisionStatus: packet.decision?.status,
         createdAt: new Date(String(row.created_at)).toISOString()
       };
     });

@@ -13,6 +13,7 @@ export interface ReviewHomeSummary {
   warningCount: number;
   evidenceCount: number;
   artifactTypes: string[];
+  decisionStatus?: string;
   createdAt: string;
 }
 
@@ -599,6 +600,22 @@ export function renderAppHome(reviews: ReviewHomeSummary[]): SlackBlock[] {
     return blocks;
   }
 
+  const ready = reviews.filter((review) => review.grade === "low").length;
+  const openBlockers = reviews.reduce((sum, review) => sum + review.blockerCount, 0);
+  const evidence = reviews.reduce((sum, review) => sum + review.evidenceCount, 0);
+  const decisions = reviews.filter((review) => review.decisionStatus).length;
+  blocks.push({
+    type: "section",
+    fields: [
+      { type: "mrkdwn", text: `*Reviews in view*\n${reviews.length}` },
+      { type: "mrkdwn", text: `*Ready for approval*\n${ready}` },
+      { type: "mrkdwn", text: `*Open blockers*\n${openBlockers}` },
+      { type: "mrkdwn", text: `*Evidence items*\n${evidence}` },
+      { type: "mrkdwn", text: `*Human decisions*\n${decisions}` }
+    ]
+  });
+  blocks.push({ type: "divider" });
+
   blocks.push({
     type: "section",
     text: {
@@ -615,6 +632,7 @@ export function renderAppHome(reviews: ReviewHomeSummary[]): SlackBlock[] {
         text: [
           `*${review.grade.toUpperCase()}* - ${formatDate(review.createdAt)}`,
           `${review.blockerCount} blocker(s), ${review.warningCount} warning(s), ${review.evidenceCount} evidence item(s)`,
+          `Decision: ${review.decisionStatus?.replaceAll("_", " ") ?? "pending"}`,
           `Inputs: ${review.artifactTypes.join(", ") || "none"}`,
           `_${review.summary}_`
         ].join("\n")
