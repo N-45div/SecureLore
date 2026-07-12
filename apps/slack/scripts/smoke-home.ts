@@ -31,8 +31,12 @@ const reviews = await store.listRecentReviews({
 });
 
 const blocks = renderAppHome(reviews);
+const reviewerBlocks = renderAppHome(reviews, { reviewerMode: true });
+const localDeletionAvailable = await store.deleteUserData("T_SMOKE", "U_SMOKE");
 console.log(JSON.stringify({
   reviews: reviews.length,
   firstGrade: reviews[0]?.grade,
-  blocks: blocks.length
+  blocks: blocks.length,
+  reviewerBlocks: reviewerBlocks.length,
+  localDeletionAvailable
 }, null, 2));

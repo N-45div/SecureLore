@@ -23,6 +23,7 @@ SecureLore reviews real Slack app and MCP artifacts, then creates an admin-ready
 - auditable human decisions that cannot approve unresolved blockers
 - reviewer allowlist and workspace admin approval queue without `admin.*` scopes
 - workspace policy overlays and runtime verification evidence
+- self-service deletion from Slack App Home
 - tenant-scoped retrieval learning and candidate regression evals
 
 The product is intentionally Slack-native. Builders run `/securelore review`, paste or upload artifacts, search live workspace precedent, add evidence in Slack, promote sanitized lessons, and reopen reviews from App Home.

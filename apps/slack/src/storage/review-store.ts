@@ -110,4 +110,10 @@ export class ReviewStore {
 
     return this.local?.listRecentReviews(options?.limit) ?? [];
   }
+
+  async deleteUserData(slackTeamId: string, slackUserId: string): Promise<boolean> {
+    if (!this.neon) return false;
+    await this.neon.deleteUserData(slackTeamId, slackUserId);
+    return true;
+  }
 }

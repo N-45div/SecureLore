@@ -550,7 +550,6 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       });
       return;
     }
-
     await client.chat.postMessage({
       channel: responseChannel,
       text: `Learning trace for ${reviewId}`,
@@ -743,6 +742,13 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       });
       return;
     }
+    if (!packet.artifactFingerprint) {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "This is a legacy review without an artifact fingerprint. Run a new review before requesting admin approval."
+      });
+      return;
+    }
     if (!approvalChannel) {
       await client.chat.postMessage({
         channel: body.user.id,
@@ -806,6 +812,13 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       await ack({
         response_action: "errors",
         errors: { decision_rationale_block: "Review packet was not found." }
+      });
+      return;
+    }
+    if (!packet.artifactFingerprint) {
+      await ack({
+        response_action: "errors",
+        errors: { decision_rationale_block: "Legacy reviews cannot be approved. Run a new fingerprinted review." }
       });
       return;
     }
@@ -956,6 +969,54 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       trigger_id: body.trigger_id,
       view: reviewModal()
     });
+  });
+
+  app.action("home_delete_data", async ({ ack, body, client }) => {
+    await ack();
+    if (body.type !== "block_actions" || !body.trigger_id) return;
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: deleteDataModal()
+    });
+  });
+
+  app.view("securelore_delete_data_submit", async ({ ack, body, view, client }) => {
+    const confirmation = view.state.values.delete_confirmation_block?.delete_confirmation?.value?.trim();
+    if (confirmation !== "DELETE") {
+      await ack({
+        response_action: "errors",
+        errors: { delete_confirmation_block: "Type DELETE to remove your SecureLore review data." }
+      });
+      return;
+    }
+    if (!body.team?.id) {
+      await ack({
+        response_action: "errors",
+        errors: { delete_confirmation_block: "Slack workspace identity was missing." }
+      });
+      return;
+    }
+
+    await ack();
+    try {
+      const deleted = await store.deleteUserData(body.team.id, body.user.id);
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: deleted
+          ? "Your SecureLore review sessions, evidence, feedback, candidate evals, and promoted lessons were deleted."
+          : "Persistent deletion is unavailable in local development mode. No production data was changed."
+      });
+    } catch (error) {
+      logger("user_data_deletion_failed", {
+        teamId: body.team.id,
+        userId: body.user.id,
+        message: error instanceof Error ? error.message : "unknown"
+      });
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "SecureLore could not delete your review data. No partial-success claim was recorded; contact the project owner with your workspace and user ID."
+      });
+    }
   });
 
   app.action("home_open_room", async ({ ack, body, client }) => {
@@ -1460,6 +1521,35 @@ function decisionModal(reviewId: string) {
             type: "plain_text" as const,
             text: "Explain the evidence, remaining risk, and required next action."
           }
+        }
+      }
+    ]
+  };
+}
+
+function deleteDataModal() {
+  return {
+    type: "modal" as const,
+    callback_id: "securelore_delete_data_submit",
+    title: { type: "plain_text" as const, text: "Delete review data" },
+    submit: { type: "plain_text" as const, text: "Delete" },
+    close: { type: "plain_text" as const, text: "Cancel" },
+    blocks: [
+      {
+        type: "section" as const,
+        text: {
+          type: "mrkdwn" as const,
+          text: "This permanently deletes your workspace-scoped review sessions, submitted evidence, feedback, candidate evals, and promoted lessons. This cannot be undone."
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "delete_confirmation_block",
+        label: { type: "plain_text" as const, text: "Type DELETE to confirm" },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "delete_confirmation",
+          placeholder: { type: "plain_text" as const, text: "DELETE" }
         }
       }
     ]

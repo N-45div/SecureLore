@@ -318,4 +318,29 @@ export class NeonMemoryStore {
       };
     });
   }
+
+  async deleteUserData(slackTeamId: string, slackUserId: string): Promise<void> {
+    await this.sql`
+      DELETE FROM eval_cases
+      WHERE source_review_id IN (
+        SELECT id FROM review_sessions
+        WHERE slack_team_id = ${slackTeamId} AND slack_user_id = ${slackUserId}
+      )
+    `;
+    await this.sql`
+      DELETE FROM feedback_events
+      WHERE slack_user_id = ${slackUserId}
+        AND review_id IN (
+          SELECT id FROM review_sessions WHERE slack_team_id = ${slackTeamId}
+        )
+    `;
+    await this.sql`
+      DELETE FROM learning_examples
+      WHERE slack_team_id = ${slackTeamId} AND promoted_by = ${slackUserId}
+    `;
+    await this.sql`
+      DELETE FROM review_sessions
+      WHERE slack_team_id = ${slackTeamId} AND slack_user_id = ${slackUserId}
+    `;
+  }
 }

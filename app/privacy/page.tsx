@@ -34,7 +34,7 @@ const rows = [
   {
     label: "Deletion",
     value:
-      "Workspace owners or installing users can request deletion of review records, feedback, and evidence through the project submission contact."
+      "Users can open SecureLore App Home, choose Delete my review data, and confirm deletion. This removes their workspace-scoped review sessions, evidence, feedback, candidate evals, and promoted lessons."
   }
 ];
 

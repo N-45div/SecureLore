@@ -595,6 +595,12 @@ export function renderAppHome(
             text: "Refresh"
           },
           action_id: "home_refresh"
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "Delete my review data" },
+          style: "danger",
+          action_id: "home_delete_data"
         }
       ]
     },
