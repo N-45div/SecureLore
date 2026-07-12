@@ -2,15 +2,17 @@ import { readFile } from "node:fs/promises";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { applyEvidenceAssessment, reviewArtifacts } from "../src/index.js";
+import { applyEvidenceAssessment, compareReviewPackets, reviewArtifacts } from "../src/index.js";
 import type { McpToolsListLike, SlackManifestLike } from "../src/index.js";
 
 const currentDir = fileURLToPath(new URL(".", import.meta.url));
 const root = join(currentDir, "../../../..");
 
-const [manifestRaw, toolsRaw] = await Promise.all([
+const [manifestRaw, toolsRaw, fixedManifestRaw, fixedToolsRaw] = await Promise.all([
   readFile(join(root, "artifacts/samples/bad-support-agent.manifest.json"), "utf8"),
-  readFile(join(root, "artifacts/samples/bad-mcp-tools.json"), "utf8")
+  readFile(join(root, "artifacts/samples/bad-mcp-tools.json"), "utf8"),
+  readFile(join(root, "artifacts/samples/fixed-support-agent.manifest.json"), "utf8"),
+  readFile(join(root, "artifacts/samples/fixed-mcp-tools.json"), "utf8")
 ]);
 
 const manifest = JSON.parse(manifestRaw) as SlackManifestLike;
@@ -32,6 +34,14 @@ assert.equal(
   evidenceResolved.findings.find((finding) => finding.id === "scope-channels-history")?.resolution?.status,
   "resolved"
 );
+
+const corrected = reviewArtifacts({
+  manifest: JSON.parse(fixedManifestRaw) as SlackManifestLike,
+  mcpTools: JSON.parse(fixedToolsRaw) as McpToolsListLike
+});
+const comparison = compareReviewPackets(packet, corrected);
+assert.equal(comparison.lineage?.parentReviewId, packet.reviewId);
+assert.ok((comparison.comparison?.resolvedFindingIds.length ?? 0) > 0);
 assert.match(evidenceResolved.overallRisk.summary, /resolved by evidence/);
 
 const artifactBlocker = applyEvidenceAssessment(packet, "insecure-slack-endpoints", {
@@ -53,5 +63,7 @@ console.log(JSON.stringify({
   )?.resolution?.status,
   artifactGuard: artifactBlocker.findings.find(
     (finding) => finding.id === "insecure-slack-endpoints"
-  )?.resolution?.status
+  )?.resolution?.status,
+  correctedGrade: comparison.overallRisk.grade,
+  resolvedByFix: comparison.comparison?.resolvedFindingIds.length
 }, null, 2));

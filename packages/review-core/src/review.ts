@@ -59,6 +59,35 @@ export function applyEvidenceAssessment(
   };
 }
 
+export function compareReviewPackets(previous: ReviewPacket, current: ReviewPacket): ReviewPacket {
+  const previousActive = new Set(activeFindings(previous.findings).map((finding) => finding.id));
+  const currentActive = new Set(activeFindings(current.findings).map((finding) => finding.id));
+  const resolvedFindingIds = [...previousActive].filter((id) => !currentActive.has(id));
+  const remainingFindingIds = [...currentActive].filter((id) => previousActive.has(id));
+  const newFindingIds = [...currentActive].filter((id) => !previousActive.has(id));
+  const comparison = {
+    beforeGrade: previous.overallRisk.grade,
+    afterGrade: current.overallRisk.grade,
+    resolvedFindingIds,
+    remainingFindingIds,
+    newFindingIds
+  };
+
+  return {
+    ...current,
+    lineage: { parentReviewId: previous.reviewId },
+    comparison,
+    generatedArtifacts: [
+      ...(current.generatedArtifacts ?? []),
+      {
+        type: "review_comparison",
+        title: "Corrected artifact comparison",
+        content: comparison
+      }
+    ]
+  };
+}
+
 const BROAD_HISTORY_SCOPES = new Set([
   "channels:history",
   "groups:history",

@@ -82,7 +82,8 @@ export interface GeneratedArtifact {
     | "ai_disclosure"
     | "admin_approval_brief"
     | "manifest_patch_plan"
-    | "mcp_tool_metadata";
+    | "mcp_tool_metadata"
+    | "review_comparison";
   title: string;
   content: string | Record<string, unknown> | unknown[];
 }
@@ -116,6 +117,16 @@ export interface ReviewPacket {
   recommendedActions: RecommendedAction[];
   policyContext?: PolicyContext[];
   generatedArtifacts?: GeneratedArtifact[];
+  lineage?: {
+    parentReviewId: string;
+  };
+  comparison?: {
+    beforeGrade: "low" | "medium" | "high" | "reject";
+    afterGrade: "low" | "medium" | "high" | "reject";
+    resolvedFindingIds: string[];
+    remainingFindingIds: string[];
+    newFindingIds: string[];
+  };
   evalTrace?: {
     fixtureIds?: string[];
     checks?: Array<{

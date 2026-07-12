@@ -13,6 +13,7 @@ import {
 } from "@securelore/slack-ui";
 import {
   applyEvidenceAssessment,
+  compareReviewPackets,
   type EvidenceAssessment,
   type GeneratedArtifact,
   type ReviewPacket
@@ -255,10 +256,15 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           mcpToolsJson,
           policyContext
         });
-        const packet = await enrichReviewPacket(deterministicPacket, {
+        let packet = await enrichReviewPacket(deterministicPacket, {
           openRouterApiKey: process.env.OPENROUTER_API_KEY,
           model: process.env.OPENROUTER_MODEL
         });
+        const parentReviewId = view.private_metadata || undefined;
+        if (parentReviewId) {
+          const parentPacket = await store.getReview(parentReviewId);
+          if (parentPacket) packet = compareReviewPackets(parentPacket, packet);
+        }
         logger("modal_review_enriched", {
           reviewId: packet.reviewId,
           grade: packet.overallRisk.grade,
@@ -592,6 +598,15 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     });
   });
 
+  app.action("room_submit_fix", async ({ ack, body, client }) => {
+    await ack();
+    if (body.type !== "block_actions" || !body.trigger_id) return;
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: reviewModal(getActionValue(body.actions[0]))
+    });
+  });
+
   app.view("securelore_lesson_submit", async ({ ack, body, view, client }) => {
     const reviewId = view.private_metadata;
     const lesson =
@@ -787,10 +802,11 @@ async function postReviewRoom(options: {
   });
 }
 
-function reviewModal() {
+function reviewModal(parentReviewId = "") {
   return {
     type: "modal" as const,
     callback_id: "securelore_review_submit",
+    private_metadata: parentReviewId,
     title: {
       type: "plain_text" as const,
       text: "SecureLore Review"

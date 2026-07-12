@@ -77,6 +77,19 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
     });
   }
 
+  if (packet.comparison) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: [
+          `*Corrected artifact comparison:* ${packet.comparison.beforeGrade.toUpperCase()} → ${packet.comparison.afterGrade.toUpperCase()}`,
+          `Resolved: ${packet.comparison.resolvedFindingIds.length} | Remaining: ${packet.comparison.remainingFindingIds.length} | New: ${packet.comparison.newFindingIds.length}`
+        ].join("\n")
+      }
+    });
+  }
+
   if (topFindings.length > 0) {
     blocks.push({
       type: "section",
@@ -218,6 +231,15 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
         },
         value: packet.reviewId,
         action_id: "artifact_learning_trace"
+      },
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Submit corrected artifacts"
+        },
+        value: packet.reviewId,
+        action_id: "room_submit_fix"
       }
     ]
   });
@@ -372,6 +394,15 @@ export function renderReviewRoom(
         },
         value: packet.reviewId,
         action_id: "artifact_learning_trace"
+      },
+      {
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "Submit fix"
+        },
+        value: packet.reviewId,
+        action_id: "room_submit_fix"
       }
     ]
   });

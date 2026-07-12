@@ -1,4 +1,4 @@
-export { applyEvidenceAssessment, reviewArtifacts } from "./review.js";
+export { applyEvidenceAssessment, compareReviewPackets, reviewArtifacts } from "./review.js";
 export type {
   ArtifactType,
   EvidenceAssessment,

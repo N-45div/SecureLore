@@ -110,6 +110,26 @@
         "$ref": "#/$defs/generatedArtifact"
       }
     },
+    "lineage": {
+      "type": "object",
+      "required": ["parentReviewId"],
+      "properties": {
+        "parentReviewId": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+    "comparison": {
+      "type": "object",
+      "required": ["beforeGrade", "afterGrade", "resolvedFindingIds", "remainingFindingIds", "newFindingIds"],
+      "properties": {
+        "beforeGrade": { "enum": ["low", "medium", "high", "reject"] },
+        "afterGrade": { "enum": ["low", "medium", "high", "reject"] },
+        "resolvedFindingIds": { "type": "array", "items": { "type": "string" } },
+        "remainingFindingIds": { "type": "array", "items": { "type": "string" } },
+        "newFindingIds": { "type": "array", "items": { "type": "string" } }
+      },
+      "additionalProperties": false
+    },
     "evalTrace": {
       "type": "object",
       "properties": {
@@ -317,10 +337,13 @@
             "fixed_manifest",
             "scope_justification_table",
             "marketplace_notes",
+            "marketplace_checklist",
             "privacy_disclosure",
             "ai_disclosure",
             "admin_approval_brief",
-            "mcp_tool_metadata"
+            "manifest_patch_plan",
+            "mcp_tool_metadata",
+            "review_comparison"
           ]
         },
         "title": {
