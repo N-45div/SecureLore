@@ -38,5 +38,53 @@
     "title": "MCP tool discovery and metadata",
     "content": "MCP tools should be discoverable with clear names, titles, descriptions, input schemas, and accurate annotations. Read-only hints should match actual behavior. Tools that mutate state, create records, delete records, send messages, or trigger external effects should not be marked read-only and should make write behavior clear to users.",
     "tags": ["slack", "mcp", "tools", "readOnlyHint", "schemas"]
+  },
+  {
+    "id": "slack-agent.assistant-ui",
+    "source": "Slack Agent Builder Challenge resources",
+    "sourceUrl": "https://slackhack.devpost.com/resources",
+    "title": "Slack Agent and Assistant experience",
+    "content": "A Slack Agent should provide a useful native interaction surface, clear onboarding, helpful responses, and visible progress while work is running. The experience should function consistently inside Slack and should not leave users at dead ends.",
+    "tags": ["slack", "agent", "assistant", "ux", "onboarding"]
+  },
+  {
+    "id": "slack-rts.zero-copy",
+    "source": "Slack Real-Time Search API guidance",
+    "sourceUrl": "https://docs.slack.dev/apis/web-api/real-time-search-api/",
+    "title": "Real-Time Search and zero-copy context",
+    "content": "Real-Time Search is intended to retrieve relevant Slack context in response to a user interaction without storing customer message content on an external server. Apps should request only the granular search scopes needed and return source links or context that the user can access.",
+    "tags": ["slack", "rts", "real-time-search", "zero-copy", "privacy"]
+  },
+  {
+    "id": "slack-rts.action-token",
+    "source": "Slack Real-Time Search API guidance",
+    "sourceUrl": "https://docs.slack.dev/apis/web-api/real-time-search-api/",
+    "title": "Real-Time Search request authorization",
+    "content": "Real-Time Search calls made with a bot token require an action token from an eligible message or app mention event. User-token calls act on behalf of the authenticating user. Apps should preserve Slack access boundaries and avoid using broad history access as a substitute for the secure search interface.",
+    "tags": ["slack", "rts", "action-token", "authorization", "scopes"]
+  },
+  {
+    "id": "slack-mcp.auth-boundary",
+    "source": "Slack MCP Server guidance",
+    "sourceUrl": "https://docs.slack.dev/ai/slack-mcp-server/",
+    "title": "Slack MCP identity and authorization",
+    "content": "Slack MCP clients must use a registered Slack app identity and authorization that matches the user and workspace context. MCP tool access should be explicit, auditable, and limited to the scopes required by the tools that are actually demonstrated.",
+    "tags": ["slack", "mcp", "oauth", "authorization", "audit"]
+  },
+  {
+    "id": "slack-marketplace.privacy-model",
+    "source": "Slack Marketplace guidelines",
+    "sourceUrl": "https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/",
+    "title": "Slack privacy model",
+    "content": "A Slack app should not expose private channel names, messages, files, or capabilities to people who could not access them in Slack. Shared-channel and multi-workspace behavior must preserve the access rights of the relevant user and workspace.",
+    "tags": ["slack", "privacy", "access-control", "shared-channels"]
+  },
+  {
+    "id": "slack-marketplace.ai-human-review",
+    "source": "Slack Marketplace guidelines",
+    "sourceUrl": "https://docs.slack.dev/slack-marketplace/slack-marketplace-app-guidelines-and-requirements/",
+    "title": "AI output and human review",
+    "content": "Generative AI output may be inaccurate and should be clearly described. AI applications must not make consequential decisions without human review. SecureLore should present recommendations and evidence for an administrator rather than silently approving or denying a deployment.",
+    "tags": ["slack", "ai", "human-review", "disclosure", "governance"]
   }
 ]
