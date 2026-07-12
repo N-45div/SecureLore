@@ -53,6 +53,12 @@ flowchart LR
 
 ## Architecture
 
+The product architecture follows the decision journey from builder submission to policy review, workspace precedent, corrected artifacts, fingerprint-bound approval, and explicit retrieval learning.
+
+![SecureLore product architecture](public/securelore-architecture.png)
+
+The compact Mermaid view below shows the same runtime components and integration boundaries in a repository-native format.
+
 ```mermaid
 flowchart LR
   Slack[Slack Agent UI, command, App Home] --> Vercel[Vercel HTTPS endpoints]
