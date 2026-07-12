@@ -1,4 +1,9 @@
-export { applyEvidenceAssessment, compareReviewPackets, reviewArtifacts } from "./review.js";
+export {
+  applyEvidenceAssessment,
+  compareReviewPackets,
+  recordReviewDecision,
+  reviewArtifacts
+} from "./review.js";
 export type {
   ArtifactType,
   EvidenceAssessment,
@@ -10,6 +15,7 @@ export type {
   PolicyContext,
   RecommendedAction,
   ReviewPacket,
+  ReviewDecisionInput,
   ScopeJustification,
   Severity,
   SlackManifestLike

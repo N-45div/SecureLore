@@ -362,6 +362,20 @@ export function renderReviewRoom(
     });
   }
 
+  if (packet.decision) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: [
+          `*Human decision:* ${packet.decision.status.replaceAll("_", " ").toUpperCase()}`,
+          `*Reviewer:* <@${packet.decision.decidedBy}>`,
+          `*Rationale:* ${packet.decision.rationale}`
+        ].join("\n")
+      }
+    });
+  }
+
   blocks.push({
     type: "actions",
     elements: [
@@ -409,6 +423,19 @@ export function renderReviewRoom(
         },
         value: packet.reviewId,
         action_id: "room_submit_fix"
+      }
+    ]
+  });
+
+  blocks.push({
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: { type: "plain_text", text: "Record decision" },
+        style: "primary",
+        value: packet.reviewId,
+        action_id: "room_record_decision"
       }
     ]
   });

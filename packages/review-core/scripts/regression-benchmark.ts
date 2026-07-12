@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   applyEvidenceAssessment,
   compareReviewPackets,
+  recordReviewDecision,
   reviewArtifacts,
   type McpToolsListLike,
   type SlackManifestLike
@@ -98,6 +99,27 @@ check(
   "corrected-review-resolves-findings",
   (comparison.comparison?.resolvedFindingIds.length ?? 0) > 0
 );
+
+let blockedApproval = false;
+try {
+  recordReviewDecision(bad, {
+    status: "approved",
+    rationale: "Approve despite unresolved blockers.",
+    decidedBy: "U_BENCHMARK",
+    decidedAt: new Date().toISOString()
+  });
+} catch {
+  blockedApproval = true;
+}
+check("human-approval-blocked-while-blockers-remain", blockedApproval);
+
+const approved = recordReviewDecision(fixed, {
+  status: "approved",
+  rationale: "No active blockers or warnings remain in the corrected artifacts.",
+  decidedBy: "U_BENCHMARK",
+  decidedAt: new Date().toISOString()
+});
+check("human-approval-recorded-for-low-risk-review", approved.decision?.status === "approved");
 
 const passed = checks.filter((item) => item.passed).length;
 const expectedDetected = expectedBlockers.filter((id) => badIds.has(id)).length;

@@ -130,6 +130,17 @@
       },
       "additionalProperties": false
     },
+    "decision": {
+      "type": "object",
+      "required": ["status", "rationale", "decidedBy", "decidedAt"],
+      "properties": {
+        "status": { "enum": ["approved", "changes_requested", "warnings_accepted"] },
+        "rationale": { "type": "string" },
+        "decidedBy": { "type": "string" },
+        "decidedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": false
+    },
     "evalTrace": {
       "type": "object",
       "properties": {

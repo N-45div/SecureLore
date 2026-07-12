@@ -15,6 +15,7 @@ import {
 import {
   applyEvidenceAssessment,
   compareReviewPackets,
+  recordReviewDecision,
   type EvidenceAssessment,
   type GeneratedArtifact,
   type ReviewPacket
@@ -635,6 +636,71 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     });
   });
 
+  app.action("room_record_decision", async ({ ack, body, client }) => {
+    await ack();
+    if (body.type !== "block_actions" || !body.trigger_id) return;
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: decisionModal(getActionValue(body.actions[0]))
+    });
+  });
+
+  app.view("securelore_decision_submit", async ({ ack, body, view, client }) => {
+    const reviewId = view.private_metadata;
+    const status = view.state.values.decision_status_block?.decision_status?.selected_option?.value;
+    const rationale = view.state.values.decision_rationale_block?.decision_rationale?.value?.trim() ?? "";
+    if (!reviewId || !status || rationale.length < 12) {
+      await ack({
+        response_action: "errors",
+        errors: {
+          decision_rationale_block: "Add a concrete review rationale of at least 12 characters."
+        }
+      });
+      return;
+    }
+
+    const packet = await store.getReview(reviewId, body.team?.id);
+    if (!packet) {
+      await ack({
+        response_action: "errors",
+        errors: { decision_rationale_block: "Review packet was not found." }
+      });
+      return;
+    }
+
+    try {
+      const updated = recordReviewDecision(packet, {
+        status: status as "approved" | "changes_requested" | "warnings_accepted",
+        rationale,
+        decidedBy: body.user.id,
+        decidedAt: new Date().toISOString()
+      });
+      await ack();
+      await store.saveReview(updated, {
+        slackTeamId: body.team?.id,
+        slackUserId: body.user.id
+      });
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: `Review decision recorded: ${status.replaceAll("_", " ")}.`
+      });
+      await postReviewRoom({
+        client,
+        channel: body.user.id,
+        packet: updated,
+        store,
+        logger
+      });
+    } catch (error) {
+      await ack({
+        response_action: "errors",
+        errors: {
+          decision_rationale_block: error instanceof Error ? error.message : "Decision could not be recorded."
+        }
+      });
+    }
+  });
+
   app.view("securelore_lesson_submit", async ({ ack, body, view, client }) => {
     const reviewId = view.private_metadata;
     const lesson =
@@ -1067,6 +1133,56 @@ function lessonModal(reviewId: string) {
           placeholder: {
             type: "plain_text" as const,
             text: "Example: files:read is acceptable only when the app has a visible user-triggered file review workflow, documents retention, and avoids storing file content."
+          }
+        }
+      }
+    ]
+  };
+}
+
+function decisionModal(reviewId: string) {
+  return {
+    type: "modal" as const,
+    callback_id: "securelore_decision_submit",
+    private_metadata: reviewId,
+    title: { type: "plain_text" as const, text: "Review Decision" },
+    submit: { type: "plain_text" as const, text: "Record" },
+    close: { type: "plain_text" as const, text: "Cancel" },
+    blocks: [
+      {
+        type: "input" as const,
+        block_id: "decision_status_block",
+        label: { type: "plain_text" as const, text: "Decision" },
+        element: {
+          type: "static_select" as const,
+          action_id: "decision_status",
+          options: [
+            {
+              text: { type: "plain_text" as const, text: "Request changes" },
+              value: "changes_requested"
+            },
+            {
+              text: { type: "plain_text" as const, text: "Approve" },
+              value: "approved"
+            },
+            {
+              text: { type: "plain_text" as const, text: "Accept remaining warnings" },
+              value: "warnings_accepted"
+            }
+          ]
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "decision_rationale_block",
+        label: { type: "plain_text" as const, text: "Rationale" },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "decision_rationale",
+          multiline: true,
+          placeholder: {
+            type: "plain_text" as const,
+            text: "Explain the evidence, remaining risk, and required next action."
           }
         }
       }

@@ -57,6 +57,13 @@ export interface EvidenceAssessment {
   };
 }
 
+export interface ReviewDecisionInput {
+  status: "approved" | "changes_requested" | "warnings_accepted";
+  rationale: string;
+  decidedBy: string;
+  decidedAt: string;
+}
+
 export interface ScopeJustification {
   scope: string;
   status: "justified" | "overbroad" | "missing_evidence" | "remove";
@@ -139,6 +146,7 @@ export interface ReviewPacket {
     remainingFindingIds: string[];
     newFindingIds: string[];
   };
+  decision?: ReviewDecisionInput;
   evalTrace?: {
     fixtureIds?: string[];
     checks?: Array<{

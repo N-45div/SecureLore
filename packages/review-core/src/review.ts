@@ -5,6 +5,7 @@ import type {
   McpToolReview,
   McpToolsListLike,
   RecommendedAction,
+  ReviewDecisionInput,
   ReviewPacket,
   PolicyContext,
   ScopeJustification,
@@ -87,6 +88,36 @@ export function compareReviewPackets(previous: ReviewPacket, current: ReviewPack
         content: comparison
       }
     ]
+  };
+}
+
+export function recordReviewDecision(
+  packet: ReviewPacket,
+  decision: ReviewDecisionInput
+): ReviewPacket {
+  const active = activeFindings(packet.findings);
+  const blockers = active.filter((finding) => finding.severity === "blocker");
+  if (decision.status !== "changes_requested" && blockers.length > 0) {
+    throw new Error("Resolve every active blocker before recording approval or accepting warnings.");
+  }
+  if (decision.status === "warnings_accepted" && !active.some((finding) => finding.severity === "warn")) {
+    throw new Error("No active warnings are available to accept.");
+  }
+
+  const decisionLine = [
+    `Human review decision: ${decision.status.replaceAll("_", " ").toUpperCase()}.`,
+    `Recorded by ${decision.decidedBy} at ${decision.decidedAt}.`,
+    decision.rationale
+  ].join(" ");
+
+  return {
+    ...packet,
+    decision,
+    generatedArtifacts: packet.generatedArtifacts?.map((artifact) =>
+      artifact.type === "admin_approval_brief"
+        ? { ...artifact, content: `${String(artifact.content)} ${decisionLine}` }
+        : artifact
+    )
   };
 }
 
