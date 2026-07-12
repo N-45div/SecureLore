@@ -12,6 +12,11 @@ const rows = [
       "To run preflight reviews, retrieve relevant policy guidance, save review history, reopen Review Rooms, and generate admin-ready artifacts."
   },
   {
+    label: "Slack Real-Time Search",
+    value:
+      "When a user explicitly requests workspace precedent, SecureLore searches public-channel messages using Slack's Real-Time Search API and the request's short-lived action token. Search results are displayed with Slack permalinks and are not copied into SecureLore storage, learning memory, evals, or model-training data."
+  },
+  {
     label: "AI providers",
     value:
       "OpenRouter-hosted language models are used for review enrichment. Cohere embeddings are used for policy retrieval over SecureLore policy memory."

@@ -14,12 +14,15 @@ flowchart LR
   Policy --> Cohere[Cohere embeddings]
   Policy --> Neon[(Neon Postgres + pgvector)]
   Bolt --> OpenRouter[OpenRouter LLM enrichment]
+  Bolt --> RTS[Slack Real-Time Search API]
   ReviewCore --> Packet[Structured review packet]
   OpenRouter --> Packet
   Packet --> Evidence[Evidence scoring and regrading]
   Evidence --> Decision[Human decision gate]
   Packet --> SlackUI[Block Kit review packet]
+  RTS --> LiveEvidence[Zero-copy cited workspace precedent]
   SlackUI --> Builder
+  LiveEvidence --> Builder
 ```
 
 ## Review Room And Learning Loop
@@ -66,6 +69,26 @@ flowchart TB
   Retrieval --> LLM[LLM review enrichment]
   Inputs -. not used for training .-> NoTraining[No model training]
   LLM -. output only .-> ReviewPacket[Review packet]
+  UserQuery[Explicit workspace evidence request] --> RTS[Slack Real-Time Search]
+  RTS --> LiveResults[Live cited public-channel results]
+  LiveResults -. never persisted or embedded .-> NoCopy[Zero-copy boundary]
+```
+
+## Real-Time Search Flow
+
+```mermaid
+sequenceDiagram
+  participant U as Builder/Admin
+  participant A as SecureLore Agent
+  participant R as Slack RTS API
+  participant S as SecureLore storage
+
+  U->>A: Find workspace precedent for this review
+  A->>A: Build query from explicit request and active findings
+  A->>R: assistant.search.context with short-lived action_token
+  R-->>A: Public-channel messages and Slack permalinks
+  A-->>U: Cited Workspace Evidence Scout result
+  A-xS: RTS content is not stored, embedded, or promoted
 ```
 
 ## Runtime Components
@@ -73,7 +96,7 @@ flowchart TB
 ```mermaid
 flowchart TD
   subgraph Slack_Surface[Slack surface]
-    Agent[Agent/Assistant conversation]
+    AgentSurface[Agent conversation]
     Slash[/securelore review/]
     Modal[Review, evidence, and lesson modals]
     Home[App Home dashboard]
@@ -88,8 +111,9 @@ flowchart TD
 
   subgraph Intelligence[Review intelligence]
     Core[Deterministic rules]
-    Agent[OpenRouter enrichment]
+    Enrichment[OpenRouter enrichment]
     Memory[Policy and learning retrieval]
+    RTS[Slack Real-Time Search]
   end
 
   subgraph Storage[Storage]
@@ -104,8 +128,9 @@ flowchart TD
   Slack_Surface --> Receiver
   Receiver --> Handlers
   Handlers --> Core
-  Handlers --> Agent
+  Handlers --> Enrichment
   Handlers --> Memory
+  Handlers --> RTS
   Memory --> Policies
   Memory --> Lessons
   Lessons -. scoped by Slack team .-> Memory
@@ -113,6 +138,7 @@ flowchart TD
   Handlers --> Artifacts
   Handlers --> Feedback
   Core --> Renderers
-  Agent --> Renderers
+  Enrichment --> Renderers
+  RTS --> Renderers
   Renderers --> Slack_Surface
 ```

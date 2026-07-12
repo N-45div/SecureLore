@@ -27,6 +27,13 @@ import {
 } from "./file-ingestion.js";
 import { buildPolicyQueryFromForm, runReviewFromForm } from "./input.js";
 import { createPolicyContextProvider } from "./policy-context.js";
+import {
+  buildWorkspaceEvidenceQuery,
+  describeRtsError,
+  isWorkspaceEvidenceRequest,
+  renderWorkspaceEvidenceBlocks,
+  searchWorkspaceEvidence
+} from "./rts-search.js";
 import { LocalStore } from "./storage/local-store.js";
 import { ReviewStore } from "./storage/review-store.js";
 
@@ -63,6 +70,10 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           {
             title: "How SecureLore works",
             message: "Help"
+          },
+          {
+            title: "Find workspace precedent",
+            message: "Find workspace precedent for this review"
           }
         ]
       });
@@ -73,10 +84,11 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     threadContextChanged: async ({ saveThreadContext }) => {
       await saveThreadContext();
     },
-    userMessage: async ({ event, say, setStatus, setTitle }) => {
-      const text = "text" in event && typeof event.text === "string"
-        ? event.text.trim().toLowerCase()
+    userMessage: async ({ event, say, setStatus, setTitle, client, context }) => {
+      const rawText = "text" in event && typeof event.text === "string"
+        ? event.text.trim()
         : "";
+      const text = rawText.toLowerCase();
       await setStatus("Preparing SecureLore");
 
       if (text === "help" || text.includes("how securelore works")) {
@@ -84,6 +96,50 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         await say(
           "Start a review here, submit a Slack manifest or MCP tools/list response, then use the Review Room to add evidence and generate an admin brief."
         );
+        return;
+      }
+
+      if (isWorkspaceEvidenceRequest(rawText)) {
+        await setTitle("Workspace evidence scout");
+        const actionToken = (event as typeof event & { action_token?: string }).action_token;
+        if (!actionToken) {
+          await say(
+            "Slack did not provide a live search token. Send `Find workspace precedent: <topic>` again in the SecureLore Agent conversation."
+          );
+          return;
+        }
+
+        try {
+          await setStatus("Searching live workspace precedent");
+          const latest = await store.listRecentReviews({
+            slackTeamId: context.teamId,
+            slackUserId: context.userId,
+            limit: 1
+          });
+          const packet = latest[0]
+            ? await store.getReview(latest[0].id, context.teamId)
+            : null;
+          const search = await searchWorkspaceEvidence(client, {
+            query: buildWorkspaceEvidenceQuery(rawText, packet ?? undefined),
+            actionToken
+          });
+          await say({
+            text: `SecureLore found ${search.results.length} live workspace precedent result(s).`,
+            blocks: renderWorkspaceEvidenceBlocks(search)
+          });
+          logger("rts_workspace_evidence_completed", {
+            teamId: context.teamId,
+            userId: context.userId,
+            resultCount: search.results.length
+          });
+        } catch (error) {
+          logger("rts_workspace_evidence_failed", {
+            teamId: context.teamId,
+            userId: context.userId,
+            errorCode: error && typeof error === "object" && "code" in error ? error.code : "unknown"
+          });
+          await say(describeRtsError(error));
+        }
         return;
       }
 

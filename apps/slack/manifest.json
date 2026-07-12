@@ -31,6 +31,10 @@
         {
           "title": "How SecureLore works",
           "message": "Help"
+        },
+        {
+          "title": "Find workspace precedent",
+          "message": "Find workspace precedent for this review"
         }
       ]
     }
@@ -43,7 +47,8 @@
         "chat:write",
         "commands",
         "files:read",
-        "im:history"
+        "im:history",
+        "search:read.public"
       ]
     }
   },

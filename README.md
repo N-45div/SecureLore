@@ -9,6 +9,7 @@ The business problem is the approval gap between a fast-moving builder and the w
 SecureLore reviews real Slack app and MCP artifacts, then creates an admin-ready packet:
 
 - Slack Agent/Assistant experience with native onboarding and thread status
+- zero-copy Workspace Evidence Scout using Slack Real-Time Search
 - risk grade with blockers and warnings
 - OAuth scope justification table
 - MCP tool safety review
@@ -20,7 +21,9 @@ SecureLore reviews real Slack app and MCP artifacts, then creates an admin-ready
 - auditable human decisions that cannot approve unresolved blockers
 - tenant-scoped retrieval learning and candidate regression evals
 
-The product is intentionally Slack-native. Builders run `/securelore review`, paste or upload artifacts, add evidence in Slack, promote sanitized lessons, and reopen reviews from App Home.
+The product is intentionally Slack-native. Builders run `/securelore review`, paste or upload artifacts, search live workspace precedent, add evidence in Slack, promote sanitized lessons, and reopen reviews from App Home.
+
+Workspace Evidence Scout is user-triggered and searches public-channel messages through Slack's `assistant.search.context` method. It uses the event's short-lived `action_token`, returns cited Slack permalinks, and does not persist, embed, train on, or automatically accept RTS results as review evidence.
 
 ## Why It Matters
 
@@ -50,9 +53,11 @@ flowchart LR
   Bolt --> Core[review-core checks]
   Bolt --> Memory[Neon + Cohere retrieval]
   Bolt --> LLM[OpenRouter enrichment]
+  Bolt --> RTS[Slack Real-Time Search]
   Core --> Packet[Review packet]
   Memory --> Packet
   LLM --> Packet
+  RTS --> Live[Zero-copy cited precedent]
   Packet --> SlackUI[Block Kit UI]
   SlackUI --> Slack
 ```
@@ -63,6 +68,7 @@ Detailed diagrams are in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 - Slack Bolt for commands, events, modals, App Home, and Block Kit actions
 - Slack Agent/Assistant UI for the native AI agent experience required by the challenge
+- Slack Real-Time Search API for user-triggered, zero-copy public-channel precedent discovery
 - Vercel for production HTTPS endpoints
 - Next.js for public landing, privacy, and status pages
 - TypeScript workspaces for Slack app, review core, memory, UI, and agent enrichment
@@ -88,11 +94,15 @@ sequenceDiagram
   participant S as Slack
   participant A as SecureLore
   participant M as Memory
+  participant R as Slack RTS
 
   B->>S: Start in Agent UI or /securelore review
   S->>A: Submit manifest and MCP tools/list JSON
   A->>M: Retrieve policy and learned lessons
   A->>S: Post review packet and Review Room
+  B->>S: Ask for workspace precedent
+  S->>R: assistant.search.context + action_token
+  R-->>S: Cited public-channel results, not stored
   B->>S: Add evidence to a finding
   A->>A: Score evidence and regrade eligible finding
   A->>M: Store review evidence and updated packet
@@ -114,6 +124,7 @@ npm run build
 npm run smoke:slack-form
 npm run smoke:slack-artifacts
 npm run smoke:slack-home
+npm run smoke:slack-rts
 npm run eval:regression
 ```
 
@@ -132,7 +143,7 @@ Primary track: **New Slack Agent**.
 
 SecureLore fits the challenge by building a Slack-native agent workflow that automates app review, surfaces policy-grounded insights, connects external memory and model systems, and creates artifacts that help teams make safer install decisions.
 
-The required hackathon technology is the Slack Agent/Assistant experience. The review engine remains useful outside the Agent container, while Slack provides the primary onboarding, conversation, decision, and App Home surfaces.
+SecureLore uses two hackathon technologies: the Slack Agent experience and the Real-Time Search API. Agent View is the conversational review surface, while RTS is load-bearing for live workspace precedent discovery that respects the searching user's Slack access and keeps retrieved content zero-copy.
 
 ## Quality Evidence
 

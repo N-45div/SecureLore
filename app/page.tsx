@@ -5,6 +5,7 @@ const checks = [
   "Slack manifest review",
   "MCP tool metadata checks",
   "Scope justification packets",
+  "Live workspace precedent search",
   "Marketplace readiness artifacts",
   "Evidence capture inside Slack"
 ];
@@ -21,6 +22,10 @@ const workflows = [
   {
     title: "Policy memory",
     body: "Ground checks against stored Slack Marketplace and platform guidance using Cohere embeddings over Neon Postgres with pgvector."
+  },
+  {
+    title: "Workspace Evidence Scout",
+    body: "Use Slack Real-Time Search on explicit request to find cited public-channel precedent without copying search results into SecureLore storage."
   }
 ];
 
@@ -78,9 +83,10 @@ export default function HomePage() {
         <p>
           SecureLore uses OpenRouter-hosted language models for review
           enrichment and Cohere embeddings for policy retrieval. Slack data is
-          not used to train models. Review packets, feedback, and evidence are
-          retained only to support the workspace review workflow and can be
-          deleted on request.
+          not used to train models. Real-Time Search results are displayed live
+          with Slack permalinks and are never stored by SecureLore. Review
+          packets, feedback, and submitted evidence are retained only to support
+          the workspace review workflow and can be deleted on request.
         </p>
       </section>
 

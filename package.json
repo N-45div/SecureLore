@@ -23,6 +23,7 @@
     "smoke:slack-file": "npm run smoke:file --workspace @securelore/slack",
     "smoke:slack-form": "npm run smoke:form --workspace @securelore/slack",
     "smoke:slack-home": "npm run smoke:home --workspace @securelore/slack",
+    "smoke:slack-rts": "npm run smoke:rts --workspace @securelore/slack",
     "db:schema:apply": "npm run schema:apply --workspace @securelore/memory",
     "db:seed:policies": "npm run seed:policies --workspace @securelore/memory",
     "smoke:retrieve": "npm run smoke:retrieve --workspace @securelore/memory",
