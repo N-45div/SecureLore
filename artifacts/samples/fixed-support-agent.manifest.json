@@ -47,20 +47,5 @@
     "org_deploy_enabled": false,
     "socket_mode_enabled": false,
     "token_rotation_enabled": true
-  },
-  "securelore_declared_features": [
-    "Answer direct employee support questions",
-    "Create support ticket drafts after user confirmation",
-    "Show support request status in App Home"
-  ],
-  "securelore_public_pages": {
-    "landing_page_url": "https://casey.example.com/slack",
-    "privacy_policy_url": "https://casey.example.com/privacy",
-    "support_page_url": "https://casey.example.com/support"
-  },
-  "securelore_ai_disclosure": {
-    "model": "OpenAI or Anthropic model configured by workspace admin",
-    "retention": "Prompts and responses are retained for 30 days for support debugging unless disabled by an admin.",
-    "training_use": "Slack customer data is not used to train foundation models."
   }
 }

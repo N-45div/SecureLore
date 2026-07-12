@@ -62,6 +62,38 @@ export interface ReviewDecisionInput {
   rationale: string;
   decidedBy: string;
   decidedAt: string;
+  artifactFingerprint?: string;
+}
+
+export interface ReviewContext {
+  declaredFeatures: string[];
+  publicPages?: {
+    landingPageUrl?: string;
+    privacyPolicyUrl?: string;
+    supportPageUrl?: string;
+  };
+  aiDisclosure?: {
+    model?: string;
+    retention?: string;
+    trainingUse?: string;
+  };
+  scopeJustifications?: Record<string, string>;
+  consequentialActions?: string[];
+  humanReviewControls?: string;
+  runtimeEvidence?: Array<{
+    kind: "endpoint_health" | "request_signing" | "scope_feature_test" | "mcp_action_guard" | "retention_control" | "other";
+    status: "declared" | "verified" | "not_verified" | "contradicted";
+    description: string;
+    reference?: string;
+  }>;
+  workspacePolicy?: {
+    name: string;
+    blockedScopes?: string[];
+    reviewRequiredScopes?: string[];
+    requiredRuntimeEvidence?: Array<
+      "endpoint_health" | "request_signing" | "scope_feature_test" | "mcp_action_guard" | "retention_control" | "other"
+    >;
+  };
 }
 
 export interface ScopeJustification {
@@ -121,10 +153,12 @@ export interface ReviewPacket {
   packetVersion: "phase1";
   reviewId: string;
   createdAt: string;
+  artifactFingerprint: string;
   inputSummary: {
     artifactTypes: ArtifactType[];
     declaredFeatures: string[];
     missingArtifacts?: string[];
+    reviewContext?: ReviewContext;
   };
   overallRisk: {
     grade: "low" | "medium" | "high" | "reject";
@@ -138,6 +172,7 @@ export interface ReviewPacket {
   generatedArtifacts?: GeneratedArtifact[];
   lineage?: {
     parentReviewId: string;
+    parentArtifactFingerprint?: string;
   };
   comparison?: {
     beforeGrade: "low" | "medium" | "high" | "reject";
@@ -147,6 +182,7 @@ export interface ReviewPacket {
     newFindingIds: string[];
   };
   decision?: ReviewDecisionInput;
+  approvalState?: "pending" | "changes_requested" | "approved" | "warnings_accepted" | "stale";
   evalTrace?: {
     fixtureIds?: string[];
     checks?: Array<{
@@ -190,17 +226,6 @@ export interface SlackManifestLike {
     };
     org_deploy_enabled?: boolean;
     token_rotation_enabled?: boolean;
-  };
-  securelore_declared_features?: string[];
-  securelore_public_pages?: {
-    landing_page_url?: string;
-    privacy_policy_url?: string;
-    support_page_url?: string;
-  };
-  securelore_ai_disclosure?: {
-    model?: string;
-    retention?: string;
-    training_use?: string;
   };
 }
 

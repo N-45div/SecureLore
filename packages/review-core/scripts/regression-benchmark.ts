@@ -7,6 +7,7 @@ import {
   recordReviewDecision,
   reviewArtifacts,
   type McpToolsListLike,
+  type ReviewContext,
   type SlackManifestLike
 } from "../src/index.js";
 
@@ -15,17 +16,19 @@ const root = join(currentDir, "../../../..");
 const readJson = async <T>(path: string): Promise<T> =>
   JSON.parse(await readFile(join(root, path), "utf8")) as T;
 
-const [badManifest, badTools, fixedManifest, fixedTools] = await Promise.all([
+const [badManifest, badTools, badContext, fixedManifest, fixedTools, fixedContext] = await Promise.all([
   readJson<SlackManifestLike>("artifacts/samples/bad-support-agent.manifest.json"),
   readJson<McpToolsListLike>("artifacts/samples/bad-mcp-tools.json"),
+  readJson<ReviewContext>("artifacts/samples/bad-support-agent.context.json"),
   readJson<SlackManifestLike>("artifacts/samples/fixed-support-agent.manifest.json"),
-  readJson<McpToolsListLike>("artifacts/samples/fixed-mcp-tools.json")
+  readJson<McpToolsListLike>("artifacts/samples/fixed-mcp-tools.json"),
+  readJson<ReviewContext>("artifacts/samples/fixed-support-agent.context.json")
 ]);
 
 const checks: Array<{ name: string; passed: boolean }> = [];
 const check = (name: string, passed: boolean) => checks.push({ name, passed });
-const bad = reviewArtifacts({ manifest: badManifest, mcpTools: badTools });
-const fixed = reviewArtifacts({ manifest: fixedManifest, mcpTools: fixedTools });
+const bad = reviewArtifacts({ manifest: badManifest, mcpTools: badTools, reviewContext: badContext });
+const fixed = reviewArtifacts({ manifest: fixedManifest, mcpTools: fixedTools, reviewContext: fixedContext });
 const badIds = new Set(bad.findings.map((finding) => finding.id));
 const expectedBlockers = [
   "scope-groups-history",
@@ -53,9 +56,11 @@ check(
 
 const sensitive = reviewArtifacts({
   manifest: {
-    oauth_config: { scopes: { bot: ["files:read", "chat:write"] } },
-    securelore_declared_features: ["Answer support questions"],
-    securelore_public_pages: { privacy_policy_url: "https://example.com/privacy" }
+    oauth_config: { scopes: { bot: ["files:read", "chat:write"] } }
+  },
+  reviewContext: {
+    declaredFeatures: ["Answer support questions"],
+    publicPages: { privacyPolicyUrl: "https://example.com/privacy" }
   }
 });
 check(
@@ -120,6 +125,47 @@ const approved = recordReviewDecision(fixed, {
   decidedAt: new Date().toISOString()
 });
 check("human-approval-recorded-for-low-risk-review", approved.decision?.status === "approved");
+check("artifact-fingerprint-created", fixed.artifactFingerprint.startsWith("sha256:"));
+check(
+  "decision-bound-to-artifact-fingerprint",
+  approved.decision?.artifactFingerprint === fixed.artifactFingerprint
+);
+
+const drifted = compareReviewPackets(approved, reviewArtifacts({
+  manifest: fixedManifest,
+  mcpTools: fixedTools,
+  reviewContext: { ...fixedContext, declaredFeatures: [...fixedContext.declaredFeatures, "New export feature"] }
+}));
+check("changed-artifact-invalidates-approval", drifted.approvalState === "stale");
+
+check(
+  "consequential-action-requires-human-review",
+  bad.findings.some((finding) => finding.id === "consequential-actions-missing-human-review")
+);
+check(
+  "official-manifest-remains-unaugmented",
+  !Object.keys(fixedManifest as Record<string, unknown>).some((key) => key.startsWith("securelore_"))
+);
+const policyBlocked = reviewArtifacts({
+  manifest: fixedManifest,
+  mcpTools: fixedTools,
+  reviewContext: {
+    ...fixedContext,
+    workspacePolicy: {
+      name: "Strict agent policy",
+      blockedScopes: ["im:history"],
+      requiredRuntimeEvidence: ["endpoint_health"]
+    }
+  }
+});
+check(
+  "workspace-policy-blocks-prohibited-scope",
+  policyBlocked.findings.some((finding) => finding.id === "workspace-policy-blocked-im-history")
+);
+check(
+  "workspace-policy-requires-runtime-proof",
+  policyBlocked.findings.some((finding) => finding.id === "workspace-policy-runtime-evidence")
+);
 
 const passed = checks.filter((item) => item.passed).length;
 const expectedDetected = expectedBlockers.filter((id) => badIds.has(id)).length;

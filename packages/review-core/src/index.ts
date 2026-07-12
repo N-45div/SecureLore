@@ -1,6 +1,7 @@
 export {
   applyEvidenceAssessment,
   compareReviewPackets,
+  computeArtifactFingerprint,
   recordReviewDecision,
   reviewArtifacts
 } from "./review.js";
@@ -15,6 +16,7 @@ export type {
   PolicyContext,
   RecommendedAction,
   ReviewPacket,
+  ReviewContext,
   ReviewDecisionInput,
   ScopeJustification,
   Severity,

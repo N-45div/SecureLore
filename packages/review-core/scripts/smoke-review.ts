@@ -3,16 +3,18 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyEvidenceAssessment, compareReviewPackets, reviewArtifacts } from "../src/index.js";
-import type { McpToolsListLike, SlackManifestLike } from "../src/index.js";
+import type { McpToolsListLike, ReviewContext, SlackManifestLike } from "../src/index.js";
 
 const currentDir = fileURLToPath(new URL(".", import.meta.url));
 const root = join(currentDir, "../../../..");
 
-const [manifestRaw, toolsRaw, fixedManifestRaw, fixedToolsRaw] = await Promise.all([
+const [manifestRaw, toolsRaw, contextRaw, fixedManifestRaw, fixedToolsRaw, fixedContextRaw] = await Promise.all([
   readFile(join(root, "artifacts/samples/bad-support-agent.manifest.json"), "utf8"),
   readFile(join(root, "artifacts/samples/bad-mcp-tools.json"), "utf8"),
+  readFile(join(root, "artifacts/samples/bad-support-agent.context.json"), "utf8"),
   readFile(join(root, "artifacts/samples/fixed-support-agent.manifest.json"), "utf8"),
-  readFile(join(root, "artifacts/samples/fixed-mcp-tools.json"), "utf8")
+  readFile(join(root, "artifacts/samples/fixed-mcp-tools.json"), "utf8"),
+  readFile(join(root, "artifacts/samples/fixed-support-agent.context.json"), "utf8")
 ]);
 
 const manifest = JSON.parse(manifestRaw) as SlackManifestLike;
@@ -21,6 +23,7 @@ const mcpTools = JSON.parse(toolsRaw) as McpToolsListLike;
 const packet = reviewArtifacts({
   manifest,
   mcpTools,
+  reviewContext: JSON.parse(contextRaw) as ReviewContext,
   fixtureIds: ["sg-001-broad-history-scopes", "sg-004-mcp-vague-write-tool"]
 });
 
@@ -37,7 +40,8 @@ assert.equal(
 
 const corrected = reviewArtifacts({
   manifest: JSON.parse(fixedManifestRaw) as SlackManifestLike,
-  mcpTools: JSON.parse(fixedToolsRaw) as McpToolsListLike
+  mcpTools: JSON.parse(fixedToolsRaw) as McpToolsListLike,
+  reviewContext: JSON.parse(fixedContextRaw) as ReviewContext
 });
 const comparison = compareReviewPackets(packet, corrected);
 assert.equal(comparison.lineage?.parentReviewId, packet.reviewId);

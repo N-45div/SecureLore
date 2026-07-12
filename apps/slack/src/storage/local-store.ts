@@ -102,6 +102,9 @@ export class LocalStore {
         warningCount: packet.findings.filter((finding) => finding.severity === "warn").length,
         evidenceCount: 0,
         artifactTypes: packet.inputSummary.artifactTypes,
+        decisionStatus: packet.decision?.status,
+        approvalState: packet.approvalState,
+        artifactFingerprint: packet.artifactFingerprint,
         createdAt: packet.createdAt
       }));
   }

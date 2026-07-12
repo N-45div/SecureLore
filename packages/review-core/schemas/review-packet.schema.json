@@ -7,6 +7,7 @@
     "packetVersion",
     "reviewId",
     "createdAt",
+    "artifactFingerprint",
     "inputSummary",
     "overallRisk",
     "findings",
@@ -24,6 +25,10 @@
     "createdAt": {
       "type": "string",
       "format": "date-time"
+    },
+    "artifactFingerprint": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
     },
     "inputSummary": {
       "type": "object",
@@ -57,7 +62,8 @@
           "items": {
             "type": "string"
           }
-        }
+        },
+        "reviewContext": { "$ref": "#/$defs/reviewContext" }
       },
       "additionalProperties": false
     },
@@ -114,7 +120,8 @@
       "type": "object",
       "required": ["parentReviewId"],
       "properties": {
-        "parentReviewId": { "type": "string" }
+        "parentReviewId": { "type": "string" },
+        "parentArtifactFingerprint": { "type": "string" }
       },
       "additionalProperties": false
     },
@@ -137,9 +144,13 @@
         "status": { "enum": ["approved", "changes_requested", "warnings_accepted"] },
         "rationale": { "type": "string" },
         "decidedBy": { "type": "string" },
-        "decidedAt": { "type": "string", "format": "date-time" }
+        "decidedAt": { "type": "string", "format": "date-time" },
+        "artifactFingerprint": { "type": "string" }
       },
       "additionalProperties": false
+    },
+    "approvalState": {
+      "enum": ["pending", "changes_requested", "approved", "warnings_accepted", "stale"]
     },
     "evalTrace": {
       "type": "object",
@@ -175,6 +186,21 @@
   },
   "additionalProperties": false,
   "$defs": {
+    "reviewContext": {
+      "type": "object",
+      "required": ["declaredFeatures"],
+      "properties": {
+        "declaredFeatures": { "type": "array", "items": { "type": "string" } },
+        "publicPages": { "type": "object" },
+        "aiDisclosure": { "type": "object" },
+        "scopeJustifications": { "type": "object" },
+        "consequentialActions": { "type": "array", "items": { "type": "string" } },
+        "humanReviewControls": { "type": "string" },
+        "runtimeEvidence": { "type": "array", "items": { "type": "object" } },
+        "workspacePolicy": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
     "finding": {
       "type": "object",
       "required": [

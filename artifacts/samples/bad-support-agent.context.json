@@ -1,0 +1,14 @@
+{
+  "declaredFeatures": [
+    "Answer employee support questions",
+    "Create support tickets",
+    "Summarize recent channel context"
+  ],
+  "publicPages": {},
+  "aiDisclosure": {},
+  "consequentialActions": [
+    "Create and update support tickets"
+  ],
+  "humanReviewControls": "",
+  "runtimeEvidence": []
+}

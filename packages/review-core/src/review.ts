@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type {
   EvidenceAssessment,
   Finding,
@@ -7,6 +7,7 @@ import type {
   RecommendedAction,
   ReviewDecisionInput,
   ReviewPacket,
+  ReviewContext,
   PolicyContext,
   ScopeJustification,
   SlackManifestLike
@@ -78,8 +79,14 @@ export function compareReviewPackets(previous: ReviewPacket, current: ReviewPack
 
   return {
     ...current,
-    lineage: { parentReviewId: previous.reviewId },
+    lineage: {
+      parentReviewId: previous.reviewId,
+      parentArtifactFingerprint: previous.artifactFingerprint
+    },
     comparison,
+    approvalState: previous.decision && previous.artifactFingerprint !== current.artifactFingerprint
+      ? "stale"
+      : current.approvalState,
     generatedArtifacts: [
       ...(current.generatedArtifacts ?? []),
       {
@@ -103,6 +110,14 @@ export function recordReviewDecision(
   if (decision.status === "warnings_accepted" && !active.some((finding) => finding.severity === "warn")) {
     throw new Error("No active warnings are available to accept.");
   }
+  if (decision.artifactFingerprint && decision.artifactFingerprint !== packet.artifactFingerprint) {
+    throw new Error("This review changed after the decision form opened. Reopen the current Review Room.");
+  }
+
+  const boundDecision = {
+    ...decision,
+    artifactFingerprint: packet.artifactFingerprint
+  };
 
   const decisionLine = [
     `Human review decision: ${decision.status.replaceAll("_", " ").toUpperCase()}.`,
@@ -112,7 +127,8 @@ export function recordReviewDecision(
 
   return {
     ...packet,
-    decision,
+    decision: boundDecision,
+    approvalState: decision.status,
     generatedArtifacts: packet.generatedArtifacts?.map((artifact) =>
       artifact.type === "admin_approval_brief"
         ? { ...artifact, content: `${String(artifact.content)} ${decisionLine}` }
@@ -154,6 +170,16 @@ export interface ReviewInput {
   mcpTools?: McpToolsListLike;
   fixtureIds?: string[];
   policyContext?: PolicyContext[];
+  reviewContext?: ReviewContext;
+}
+
+export function computeArtifactFingerprint(input: Pick<ReviewInput, "manifest" | "mcpTools" | "reviewContext">): string {
+  const canonical = canonicalize({
+    manifest: input.manifest ?? null,
+    mcpTools: input.mcpTools ?? null,
+    reviewContext: input.reviewContext ?? { declaredFeatures: [] }
+  });
+  return `sha256:${createHash("sha256").update(JSON.stringify(canonical)).digest("hex")}`;
 }
 
 export function reviewArtifacts(input: ReviewInput): ReviewPacket {
@@ -162,12 +188,14 @@ export function reviewArtifacts(input: ReviewInput): ReviewPacket {
   const scopeJustifications: ScopeJustification[] = [];
   const mcpToolReviews: McpToolReview[] = [];
 
-  const declaredFeatures = input.manifest?.securelore_declared_features ?? [];
+  const reviewContext: ReviewContext = input.reviewContext ?? { declaredFeatures: [] };
+  const declaredFeatures = reviewContext.declaredFeatures;
+  const artifactFingerprint = computeArtifactFingerprint(input);
   const artifactTypes: ReviewPacket["inputSummary"]["artifactTypes"] = [];
 
   if (input.manifest) {
     artifactTypes.push("slack_manifest");
-    const manifestReview = reviewManifest(input.manifest, declaredFeatures);
+    const manifestReview = reviewManifest(input.manifest, reviewContext);
     findings.push(...manifestReview.findings);
     recommendedActions.push(...manifestReview.recommendedActions);
     scopeJustifications.push(...manifestReview.scopeJustifications);
@@ -181,16 +209,22 @@ export function reviewArtifacts(input: ReviewInput): ReviewPacket {
     mcpToolReviews.push(...toolReview.mcpToolReviews);
   }
 
+  const governanceReview = reviewGovernanceContext(input.manifest, reviewContext);
+  findings.push(...governanceReview.findings);
+  recommendedActions.push(...governanceReview.recommendedActions);
+
   const grade = computeRiskGrade(findings);
 
   return {
     packetVersion: "phase1",
     reviewId: `review-${randomUUID()}`,
     createdAt: new Date().toISOString(),
+    artifactFingerprint,
     inputSummary: {
       artifactTypes,
       declaredFeatures,
-      missingArtifacts: findMissingArtifacts(input.manifest)
+      missingArtifacts: findMissingArtifacts(reviewContext),
+      reviewContext
     },
     overallRisk: {
       grade,
@@ -226,12 +260,12 @@ export function reviewArtifacts(input: ReviewInput): ReviewPacket {
       {
         type: "marketplace_checklist",
         title: "Marketplace readiness checklist",
-        content: generateMarketplaceChecklist(input.manifest, findings)
+        content: generateMarketplaceChecklist(input.manifest, reviewContext, findings)
       },
       {
         type: "manifest_patch_plan",
         title: "Safer manifest patch plan",
-        content: generateManifestPatchPlan(input.manifest, findings, scopeJustifications)
+        content: generateManifestPatchPlan(input.manifest, reviewContext, findings, scopeJustifications)
       }
     ],
     evalTrace: {
@@ -248,7 +282,7 @@ export function reviewArtifacts(input: ReviewInput): ReviewPacket {
 
 function reviewManifest(
   manifest: SlackManifestLike,
-  declaredFeatures: string[]
+  reviewContext: ReviewContext
 ): {
   findings: Finding[];
   recommendedActions: RecommendedAction[];
@@ -260,6 +294,7 @@ function reviewManifest(
   const botScopes = manifest.oauth_config?.scopes?.bot ?? [];
   const userScopes = manifest.oauth_config?.scopes?.user ?? [];
   const allScopes = [...botScopes, ...userScopes];
+  const declaredFeatures = reviewContext.declaredFeatures;
   const featureText = declaredFeatures.join(" ").toLowerCase();
 
   for (const scope of allScopes) {
@@ -292,7 +327,7 @@ function reviewManifest(
       scopeJustifications.push({
         scope,
         status: hasContextFeature ? "missing_evidence" : "remove",
-        declaredUse: declaredFeatures.join("; ") || "No declared feature",
+        declaredUse: declaredUseForScope(reviewContext, scope, "No declared feature"),
         recommendation: hasContextFeature
           ? "Provide a tested Real-Time Search or MCP use case, access controls, and retention explanation."
           : "Remove this scope until a tested feature requires broad message history."
@@ -312,14 +347,14 @@ function reviewManifest(
       scopeJustifications.push({
         scope,
         status: "missing_evidence",
-        declaredUse: declaredFeatures.join("; ") || "No declared feature",
+        declaredUse: declaredUseForScope(reviewContext, scope, "No declared feature"),
         recommendation: "Document the exact user-visible feature that requires this scope, or remove it."
       });
     } else {
       scopeJustifications.push({
         scope,
         status: "justified",
-        declaredUse: declaredFeatures.join("; ") || "Core Slack app behavior",
+        declaredUse: declaredUseForScope(reviewContext, scope, "Core Slack app behavior"),
         recommendation: "Keep this scope if it maps to a tested workflow."
       });
     }
@@ -364,7 +399,7 @@ function reviewManifest(
     });
   }
 
-  const missingArtifacts = findMissingArtifacts(manifest);
+  const missingArtifacts = findMissingArtifacts(reviewContext);
   if (missingArtifacts.length > 0) {
     findings.push({
       id: "missing-public-pages",
@@ -386,11 +421,11 @@ function reviewManifest(
     });
   }
 
-  const aiDisclosure = manifest.securelore_ai_disclosure;
+  const aiDisclosure = reviewContext.aiDisclosure;
   const aiDisclosureFields: Array<[string, string | undefined]> = [
     ["model", aiDisclosure?.model],
     ["retention", aiDisclosure?.retention],
-    ["training use", aiDisclosure?.training_use]
+    ["training use", aiDisclosure?.trainingUse]
   ];
   const missingAiFields = aiDisclosureFields
     .filter(([, value]) => !value)
@@ -435,6 +470,103 @@ function hasDeclaredHistoryUse(scope: string, featureText: string): boolean {
     featureText.includes("search channel") ||
     featureText.includes("summarize channel")
   );
+}
+
+function reviewGovernanceContext(
+  manifest: SlackManifestLike | undefined,
+  reviewContext: ReviewContext
+): { findings: Finding[]; recommendedActions: RecommendedAction[] } {
+  const findings: Finding[] = [];
+  const recommendedActions: RecommendedAction[] = [];
+  const scopes = [
+    ...(manifest?.oauth_config?.scopes?.bot ?? []),
+    ...(manifest?.oauth_config?.scopes?.user ?? [])
+  ];
+
+  if ((reviewContext.consequentialActions?.length ?? 0) > 0 && !reviewContext.humanReviewControls?.trim()) {
+    findings.push({
+      id: "consequential-actions-missing-human-review",
+      severity: "blocker",
+      category: "ux_admin_trust",
+      title: "Consequential actions lack a human review control",
+      description: "The app declares write or consequential actions but does not explain preview, confirmation, reviewer, or rollback controls.",
+      evidence: reviewContext.consequentialActions,
+      policyCitations: ["slack-marketplace.ai-components"],
+      confidence: "high",
+      fixability: "needs_clarification"
+    });
+  }
+
+  for (const evidence of reviewContext.runtimeEvidence ?? []) {
+    if (evidence.status === "contradicted" || evidence.status === "not_verified") {
+      findings.push({
+        id: `runtime-${evidence.kind}`,
+        severity: evidence.status === "contradicted" ? "blocker" : "warn",
+        category: "deployment_security",
+        title: `${evidence.kind.replaceAll("_", " ")} is ${evidence.status.replaceAll("_", " ")}`,
+        description: evidence.description,
+        evidence: evidence.reference ? [evidence.reference] : undefined,
+        confidence: "high",
+        fixability: "manual"
+      });
+    }
+  }
+
+  const policy = reviewContext.workspacePolicy;
+  if (policy) {
+    for (const scope of policy.blockedScopes ?? []) {
+      if (!scopes.includes(scope)) continue;
+      findings.push({
+        id: `workspace-policy-blocked-${scope.replace(/[^a-z0-9]/gi, "-")}`,
+        severity: "blocker",
+        category: "oauth_scope_risk",
+        title: `${scope} violates ${policy.name}`,
+        description: `The workspace policy explicitly blocks ${scope}.`,
+        evidence: [scope, policy.name],
+        confidence: "high",
+        fixability: "automatic"
+      });
+    }
+    for (const scope of policy.reviewRequiredScopes ?? []) {
+      if (!scopes.includes(scope)) continue;
+      findings.push({
+        id: `workspace-policy-review-${scope.replace(/[^a-z0-9]/gi, "-")}`,
+        severity: "warn",
+        category: "oauth_scope_risk",
+        title: `${scope} requires workspace review`,
+        description: `${policy.name} requires a reviewer to verify the scope-to-feature mapping and runtime evidence.`,
+        evidence: [scope, policy.name],
+        confidence: "high",
+        fixability: "needs_clarification"
+      });
+    }
+    const providedKinds = new Set(
+      (reviewContext.runtimeEvidence ?? [])
+        .filter((item) => item.status === "verified")
+        .map((item) => item.kind)
+    );
+    const missingKinds = (policy.requiredRuntimeEvidence ?? []).filter((kind) => !providedKinds.has(kind));
+    if (missingKinds.length > 0) {
+      findings.push({
+        id: "workspace-policy-runtime-evidence",
+        severity: "blocker",
+        category: "deployment_security",
+        title: "Workspace-required runtime proof is missing",
+        description: `${policy.name} requires verified runtime evidence for: ${missingKinds.join(", ")}.`,
+        evidence: missingKinds,
+        confidence: "high",
+        fixability: "manual"
+      });
+      recommendedActions.push({
+        id: "provide-workspace-runtime-proof",
+        label: "Provide runtime proof",
+        priority: "now",
+        description: `Add verified evidence for ${missingKinds.join(", ")} before requesting admin approval.`
+      });
+    }
+  }
+
+  return { findings, recommendedActions };
 }
 
 function reviewMcpTools(toolsList: McpToolsListLike): {
@@ -532,13 +664,12 @@ function collectManifestUrls(manifest: SlackManifestLike): string[] {
   return urls;
 }
 
-function findMissingArtifacts(manifest?: SlackManifestLike): string[] {
-  if (!manifest) return [];
-  const pages = manifest.securelore_public_pages;
+function findMissingArtifacts(reviewContext: ReviewContext): string[] {
+  const pages = reviewContext.publicPages;
   const missing: string[] = [];
-  if (!pages?.landing_page_url) missing.push("landing page");
-  if (!pages?.privacy_policy_url) missing.push("privacy policy");
-  if (!pages?.support_page_url) missing.push("support page");
+  if (!pages?.landingPageUrl) missing.push("landing page");
+  if (!pages?.privacyPolicyUrl) missing.push("privacy policy");
+  if (!pages?.supportPageUrl) missing.push("support page");
   return missing;
 }
 
@@ -620,6 +751,7 @@ function buildRecommendedToolMetadata(
 
 function generateMarketplaceChecklist(
   manifest: SlackManifestLike | undefined,
+  reviewContext: ReviewContext,
   findings: Finding[]
 ): Array<{
   item: string;
@@ -647,8 +779,8 @@ function generateMarketplaceChecklist(
   );
   const urls = collectManifestUrls(manifest);
   const httpsUrls = urls.filter((url) => url.startsWith("https://"));
-  const missingPages = findMissingArtifacts(manifest);
-  const aiDisclosure = manifest.securelore_ai_disclosure;
+  const missingPages = findMissingArtifacts(reviewContext);
+  const aiDisclosure = reviewContext.aiDisclosure;
 
   return [
     {
@@ -687,7 +819,7 @@ function generateMarketplaceChecklist(
       item: "AI disclosure",
       status: findingIds.has("missing-ai-disclosure") ? "blocked" : "pass",
       evidence: aiDisclosure
-        ? `model=${aiDisclosure.model ?? "missing"}, retention=${aiDisclosure.retention ?? "missing"}, training_use=${aiDisclosure.training_use ?? "missing"}`
+        ? `model=${aiDisclosure.model ?? "missing"}, retention=${aiDisclosure.retention ?? "missing"}, training_use=${aiDisclosure.trainingUse ?? "missing"}`
         : "No AI disclosure object was declared.",
       nextAction: findingIds.has("missing-ai-disclosure")
         ? "Declare model/provider, retention, and no-training behavior in the app listing and privacy policy."
@@ -704,6 +836,7 @@ function generateMarketplaceChecklist(
 
 function generateManifestPatchPlan(
   manifest: SlackManifestLike | undefined,
+  reviewContext: ReviewContext,
   findings: Finding[],
   scopeJustifications: ScopeJustification[]
 ): Array<{
@@ -765,29 +898,29 @@ function generateManifestPatchPlan(
     });
   }
 
-  if (findMissingArtifacts(manifest).length > 0) {
+  if (findMissingArtifacts(reviewContext).length > 0) {
     patches.push({
-      path: "securelore_public_pages",
-      current: manifest.securelore_public_pages ?? null,
+      path: "review_context.public_pages",
+      current: reviewContext.publicPages ?? null,
       suggested: {
-        landing_page_url: "https://<your-public-app-page>",
-        privacy_policy_url: "https://<your-public-privacy-policy>",
-        support_page_url: "https://<your-public-support-page>"
+        landingPageUrl: "https://<your-public-app-page>",
+        privacyPolicyUrl: "https://<your-public-privacy-policy>",
+        supportPageUrl: "https://<your-public-support-page>"
       },
-      reason: "Marketplace-style review requires public landing, privacy, and support pages."
+      reason: "Provide these as SecureLore review context, not as custom Slack manifest fields."
     });
   }
 
   if (findings.some((finding) => finding.id === "missing-ai-disclosure")) {
     patches.push({
-      path: "securelore_ai_disclosure",
-      current: manifest.securelore_ai_disclosure ?? null,
+      path: "review_context.ai_disclosure",
+      current: reviewContext.aiDisclosure ?? null,
       suggested: {
         model: "<provider/model>",
         retention: "<retention behavior>",
-        training_use: "Slack data is not used to train LLMs"
+        trainingUse: "Slack data is not used to train LLMs"
       },
-      reason: "AI apps should disclose model use, retention, and no-training behavior."
+      reason: "Provide AI disclosure as SecureLore review context, not as a custom Slack manifest field."
     });
   }
 
@@ -801,4 +934,24 @@ function toProductionHttpsPlaceholder(url: string): string {
   } catch {
     return "https://<production-host>/<slack-endpoint>";
   }
+}
+
+function declaredUseForScope(
+  reviewContext: ReviewContext,
+  scope: string,
+  fallback: string
+): string {
+  return reviewContext.scopeJustifications?.[scope]?.trim()
+    || reviewContext.declaredFeatures.join("; ").trim()
+    || fallback;
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => [key, canonicalize(child)])
+  );
 }

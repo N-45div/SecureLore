@@ -296,6 +296,8 @@ export class NeonMemoryStore {
         }>;
         inputSummary?: { artifactTypes?: string[] };
         decision?: { status?: string };
+        approvalState?: string;
+        artifactFingerprint?: string;
       };
       const findings = (packet.findings ?? []).filter((finding) =>
         finding.resolution?.status !== "resolved" &&
@@ -310,6 +312,8 @@ export class NeonMemoryStore {
         evidenceCount: Number(row.evidence_count ?? 0),
         artifactTypes: packet.inputSummary?.artifactTypes ?? [],
         decisionStatus: packet.decision?.status,
+        approvalState: packet.approvalState,
+        artifactFingerprint: packet.artifactFingerprint,
         createdAt: new Date(String(row.created_at)).toISOString()
       };
     });

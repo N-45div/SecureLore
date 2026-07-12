@@ -78,5 +78,7 @@ export interface ReviewSummary {
   evidenceCount: number;
   artifactTypes: string[];
   decisionStatus?: string;
+  approvalState?: string;
+  artifactFingerprint?: string;
   createdAt: string;
 }

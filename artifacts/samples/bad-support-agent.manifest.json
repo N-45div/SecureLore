@@ -55,20 +55,5 @@
     "org_deploy_enabled": true,
     "socket_mode_enabled": false,
     "token_rotation_enabled": false
-  },
-  "securelore_declared_features": [
-    "Answer employee support questions",
-    "Create support tickets",
-    "Summarize recent channel context"
-  ],
-  "securelore_public_pages": {
-    "landing_page_url": "",
-    "privacy_policy_url": "",
-    "support_page_url": ""
-  },
-  "securelore_ai_disclosure": {
-    "model": "",
-    "retention": "",
-    "training_use": ""
   }
 }

@@ -4,6 +4,7 @@ import {
   renderWorkspaceEvidenceBlocks,
   searchWorkspaceEvidence
 } from "../src/rts-search.js";
+import { isAuthorizedReviewer, parseReviewerIds } from "../src/governance.js";
 
 let calledMethod = "";
 let calledOptions: Record<string, unknown> = {};
@@ -41,11 +42,16 @@ if (JSON.stringify(calledOptions.channel_types) !== JSON.stringify(["public_chan
 if (search.results.length !== 1 || renderWorkspaceEvidenceBlocks(search).length < 3) {
   throw new Error("RTS results were not parsed and rendered.");
 }
+const reviewers = parseReviewerIds("UADMIN1, invalid, UADMIN2");
+if (!isAuthorizedReviewer(reviewers, "UADMIN1") || isAuthorizedReviewer(reviewers, "UBUILDER")) {
+  throw new Error("Reviewer authorization failed closed incorrectly.");
+}
 
 console.log(JSON.stringify({
   method: calledMethod,
   publicOnly: true,
   zeroCopy: true,
   results: search.results.length,
-  blocks: renderWorkspaceEvidenceBlocks(search).length
+  blocks: renderWorkspaceEvidenceBlocks(search).length,
+  reviewerBoundary: true
 }, null, 2));

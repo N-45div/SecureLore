@@ -14,6 +14,8 @@ export interface ReviewHomeSummary {
   evidenceCount: number;
   artifactTypes: string[];
   decisionStatus?: string;
+  approvalState?: string;
+  artifactFingerprint?: string;
   createdAt: string;
 }
 
@@ -59,7 +61,7 @@ export function renderReviewPacket(packet: ReviewPacket): SlackBlock[] {
       elements: [
         {
           type: "mrkdwn",
-          text: `Artifacts: ${packet.inputSummary.artifactTypes.join(", ") || "none"}`
+          text: `Artifacts: ${packet.inputSummary.artifactTypes.join(", ") || "none"} • Fingerprint: ${shortFingerprint(packet.artifactFingerprint)}`
         }
       ]
     }
@@ -284,7 +286,8 @@ export function renderReviewRoom(
         text: [
           `*Status:* ${packet.overallRisk.grade === "low" ? "Ready for admin" : "Needs evidence"}`,
           `*Risk:* ${packet.overallRisk.grade.toUpperCase()} (${blockers} blocker(s), ${warnings} warning(s))`,
-          `*Evidence captured:* ${evidenceCount}`
+          `*Evidence captured:* ${evidenceCount}`,
+          `*Artifact:* ${shortFingerprint(packet.artifactFingerprint)} • Approval: ${(packet.approvalState ?? "pending").replaceAll("_", " ").toUpperCase()}`
         ].join("\n")
       }
     }
@@ -437,6 +440,12 @@ export function renderReviewRoom(
         style: "primary",
         value: packet.reviewId,
         action_id: "room_record_decision"
+      },
+      {
+        type: "button",
+        text: { type: "plain_text", text: "Request admin review" },
+        value: packet.reviewId,
+        action_id: "room_request_admin_review"
       }
     ]
   });
@@ -547,7 +556,10 @@ export function renderAdminBriefWithEvidence(
   return blocks;
 }
 
-export function renderAppHome(reviews: ReviewHomeSummary[]): SlackBlock[] {
+export function renderAppHome(
+  reviews: ReviewHomeSummary[],
+  options: { reviewerMode?: boolean } = {}
+): SlackBlock[] {
   const blocks: SlackBlock[] = [
     {
       type: "header",
@@ -560,7 +572,9 @@ export function renderAppHome(reviews: ReviewHomeSummary[]): SlackBlock[] {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "*Slack-native readiness dashboard for agents, MCP tools, scopes, and Marketplace evidence.*"
+        text: options.reviewerMode
+          ? "*Admin review queue for workspace agent approvals and version-bound decisions.*"
+          : "*Your Slack-native readiness dashboard for agents, MCP tools, scopes, and Marketplace evidence.*"
       }
     },
     {
@@ -633,6 +647,7 @@ export function renderAppHome(reviews: ReviewHomeSummary[]): SlackBlock[] {
           `*${review.grade.toUpperCase()}* - ${formatDate(review.createdAt)}`,
           `${review.blockerCount} blocker(s), ${review.warningCount} warning(s), ${review.evidenceCount} evidence item(s)`,
           `Decision: ${review.decisionStatus?.replaceAll("_", " ") ?? "pending"}`,
+          `Artifact: ${shortFingerprint(review.artifactFingerprint)} • ${review.approvalState?.replaceAll("_", " ") ?? "pending"}`,
           `Inputs: ${review.artifactTypes.join(", ") || "none"}`,
           `_${review.summary}_`
         ].join("\n")
@@ -688,6 +703,10 @@ function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toISOString().slice(0, 16).replace("T", " ");
+}
+
+function shortFingerprint(value?: string): string {
+  return value ? `${value.slice(0, 15)}…${value.slice(-8)}` : "legacy review";
 }
 
 function formatArtifactContent(artifact: GeneratedArtifact): string {

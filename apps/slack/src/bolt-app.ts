@@ -25,8 +25,9 @@ import {
   downloadSlackFileJson,
   type SlackFileInfo
 } from "./file-ingestion.js";
-import { buildPolicyQueryFromForm, runReviewFromForm } from "./input.js";
+import { buildPolicyQueryFromForm, runReviewFromForm, type SlackReviewFormInput } from "./input.js";
 import { createPolicyContextProvider } from "./policy-context.js";
+import { isAuthorizedReviewer, parseReviewerIds } from "./governance.js";
 import {
   buildWorkspaceEvidenceQuery,
   describeRtsError,
@@ -49,6 +50,8 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   });
   const policyContextProvider = createPolicyContextProvider(process.env);
   const logger = createRuntimeLogger();
+  const reviewerIds = parseReviewerIds(process.env.SLACK_REVIEWER_IDS);
+  const isReviewer = (userId: string) => isAuthorizedReviewer(reviewerIds, userId);
 
   const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
@@ -204,16 +207,17 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   app.event("app_home_opened", async ({ event, client, context }) => {
     if (event.tab === "messages") return;
 
+    const reviewerMode = isReviewer(event.user);
     const reviews = await store.listRecentReviews({
       slackTeamId: context.teamId,
-      slackUserId: event.user,
+      slackUserId: reviewerMode ? undefined : event.user,
       limit: 10
     });
     await client.views.publish({
       user_id: event.user,
       view: {
         type: "home",
-        blocks: renderAppHome(reviews)
+        blocks: renderAppHome(reviews, { reviewerMode })
       }
     });
   });
@@ -245,7 +249,11 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         buildPolicyQueryFromForm(classified),
         context.teamId
       );
-      const deterministicPacket = runReviewFromForm({ ...classified, policyContext });
+      const deterministicPacket = runReviewFromForm({
+        ...classified,
+        policyContext,
+        workspacePolicyJson: process.env.SECURELORE_WORKSPACE_POLICY_JSON
+      });
       const packet = await enrichReviewPacket(deterministicPacket, {
         openRouterApiKey: process.env.OPENROUTER_API_KEY,
         model: process.env.OPENROUTER_MODEL
@@ -280,13 +288,25 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   });
 
   app.view("securelore_review_submit", async ({ ack, body, view, client }) => {
-    const manifestJson =
-      view.state.values.manifest_block?.manifest_json?.value ?? "";
-    const mcpToolsJson =
-      view.state.values.mcp_tools_block?.mcp_tools_json?.value ?? "";
+    const formInput: SlackReviewFormInput = {
+      manifestJson: view.state.values.manifest_block?.manifest_json?.value ?? "",
+      mcpToolsJson: view.state.values.mcp_tools_block?.mcp_tools_json?.value ?? "",
+      declaredFeaturesText: view.state.values.declared_features_block?.declared_features?.value ?? "",
+      publicPagesText: view.state.values.public_pages_block?.public_pages?.value ?? "",
+      aiModel: view.state.values.ai_model_block?.ai_model?.value ?? "",
+      aiRetention: view.state.values.ai_retention_block?.ai_retention?.value ?? "",
+      aiTrainingUse: view.state.values.ai_training_block?.ai_training?.selected_option?.value ?? "",
+      scopeJustificationsText: view.state.values.scope_justifications_block?.scope_justifications?.value ?? "",
+      consequentialActionsText: view.state.values.consequential_actions_block?.consequential_actions?.value ?? "",
+      humanReviewControls: view.state.values.human_review_controls_block?.human_review_controls?.value ?? "",
+      runtimeEvidenceText: view.state.values.runtime_evidence_block?.runtime_evidence?.value ?? "",
+      workspacePolicyJson: process.env.SECURELORE_WORKSPACE_POLICY_JSON
+    };
+    const manifestJson = formInput.manifestJson ?? "";
+    const mcpToolsJson = formInput.mcpToolsJson ?? "";
 
     try {
-      runReviewFromForm({ manifestJson, mcpToolsJson });
+      runReviewFromForm(formInput);
       await ack();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Review failed.";
@@ -315,15 +335,14 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           userId: body.user.id
         });
         const policyContext = await policyContextProvider.retrieve(
-          buildPolicyQueryFromForm({ manifestJson, mcpToolsJson }),
+          buildPolicyQueryFromForm(formInput),
           body.team?.id
         );
         logger("modal_policy_context_retrieved", {
           count: policyContext.length
         });
         const deterministicPacket = runReviewFromForm({
-          manifestJson,
-          mcpToolsJson,
+          ...formInput,
           policyContext
         });
         let packet = await enrichReviewPacket(deterministicPacket, {
@@ -711,10 +730,67 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     });
   });
 
+  app.action("room_request_admin_review", async ({ ack, body, client }) => {
+    await ack();
+    if (body.type !== "block_actions") return;
+    const reviewId = getActionValue(body.actions[0]);
+    const packet = await store.getReview(reviewId, body.team?.id);
+    const approvalChannel = process.env.SLACK_APPROVAL_CHANNEL_ID;
+    if (!packet) {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "Review packet was not found. Run the review again."
+      });
+      return;
+    }
+    if (!approvalChannel) {
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: "An admin review channel is not configured. Set `SLACK_APPROVAL_CHANNEL_ID` before requesting approval."
+      });
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel: approvalChannel,
+      text: `<@${body.user.id}> requested admin review for ${reviewId}.`,
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*Admin review requested by <@${body.user.id}>*\nArtifact: \`${packet.artifactFingerprint}\``
+          }
+        },
+        ...renderReviewPacket(packet)
+      ]
+    });
+    await postReviewRoom({
+      client,
+      channel: approvalChannel,
+      packet,
+      store,
+      logger
+    });
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: `Admin review requested in <#${approvalChannel}> for artifact ${packet.artifactFingerprint.slice(0, 20)}…`
+    });
+  });
+
   app.view("securelore_decision_submit", async ({ ack, body, view, client }) => {
     const reviewId = view.private_metadata;
     const status = view.state.values.decision_status_block?.decision_status?.selected_option?.value;
     const rationale = view.state.values.decision_rationale_block?.decision_rationale?.value?.trim() ?? "";
+    if (!isReviewer(body.user.id)) {
+      await ack({
+        response_action: "errors",
+        errors: {
+          decision_rationale_block: "Only a reviewer configured in SLACK_REVIEWER_IDS can record this decision."
+        }
+      });
+      return;
+    }
     if (!reviewId || !status || rationale.length < 12) {
       await ack({
         response_action: "errors",
@@ -739,7 +815,8 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         status: status as "approved" | "changes_requested" | "warnings_accepted",
         rationale,
         decidedBy: body.user.id,
-        decidedAt: new Date().toISOString()
+        decidedAt: new Date().toISOString(),
+        artifactFingerprint: packet.artifactFingerprint
       });
       await ack();
       await store.saveReview(updated, {
@@ -857,16 +934,17 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   app.action("home_refresh", async ({ ack, body, client, context }) => {
     await ack();
     if (body.type !== "block_actions") return;
+    const reviewerMode = isReviewer(body.user.id);
     const reviews = await store.listRecentReviews({
       slackTeamId: context.teamId,
-      slackUserId: body.user.id,
+      slackUserId: reviewerMode ? undefined : body.user.id,
       limit: 10
     });
     await client.views.publish({
       user_id: body.user.id,
       view: {
         type: "home",
-        blocks: renderAppHome(reviews)
+        blocks: renderAppHome(reviews, { reviewerMode })
       }
     });
   });
@@ -1025,6 +1103,138 @@ function reviewModal(parentReviewId = "") {
           placeholder: {
             type: "plain_text" as const,
             text: "{ \"tools\": [...] }"
+          }
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "declared_features_block",
+        optional: true,
+        label: { type: "plain_text" as const, text: "User-visible features" },
+        hint: { type: "plain_text" as const, text: "One tested feature per line. Keep this outside the Slack manifest." },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "declared_features",
+          multiline: true,
+          max_length: 1600,
+          placeholder: { type: "plain_text" as const, text: "Review uploaded JSON files\nSearch public workspace precedent" }
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "public_pages_block",
+        optional: true,
+        label: { type: "plain_text" as const, text: "Public app pages" },
+        hint: { type: "plain_text" as const, text: "Use landing=, privacy=, and support= on separate lines." },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "public_pages",
+          multiline: true,
+          max_length: 1200,
+          placeholder: { type: "plain_text" as const, text: "landing=https://...\nprivacy=https://...\nsupport=https://..." }
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "ai_model_block",
+        optional: true,
+        label: { type: "plain_text" as const, text: "AI provider and model" },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "ai_model",
+          max_length: 200,
+          placeholder: { type: "plain_text" as const, text: "OpenRouter / openai/gpt-4o-mini" }
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "ai_retention_block",
+        optional: true,
+        label: { type: "plain_text" as const, text: "AI data retention" },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "ai_retention",
+          multiline: true,
+          max_length: 600,
+          placeholder: { type: "plain_text" as const, text: "What is retained, where, and for how long?" }
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "ai_training_block",
+        optional: true,
+        label: { type: "plain_text" as const, text: "Model training use" },
+        element: {
+          type: "static_select" as const,
+          action_id: "ai_training",
+          placeholder: { type: "plain_text" as const, text: "Choose the disclosed behavior" },
+          options: [
+            {
+              text: { type: "plain_text" as const, text: "Slack data is not used for training" },
+              value: "Slack data is not used to train foundation models."
+            },
+            {
+              text: { type: "plain_text" as const, text: "Training behavior is not documented" },
+              value: "Training behavior is not documented."
+            }
+          ]
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "scope_justifications_block",
+        optional: true,
+        label: { type: "plain_text" as const, text: "Scope-to-feature mapping" },
+        hint: { type: "plain_text" as const, text: "One `scope = tested feature and control` mapping per line." },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "scope_justifications",
+          multiline: true,
+          max_length: 1800,
+          placeholder: { type: "plain_text" as const, text: "files:read = user-triggered JSON review; content is not retained" }
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "consequential_actions_block",
+        optional: true,
+        label: { type: "plain_text" as const, text: "Consequential or write actions" },
+        hint: { type: "plain_text" as const, text: "One action per line." },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "consequential_actions",
+          multiline: true,
+          max_length: 1200,
+          placeholder: { type: "plain_text" as const, text: "Create a support ticket\nPost an incident update" }
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "human_review_controls_block",
+        optional: true,
+        label: { type: "plain_text" as const, text: "Human review controls" },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "human_review_controls",
+          multiline: true,
+          max_length: 800,
+          placeholder: { type: "plain_text" as const, text: "Describe preview, confirmation, reviewer, and rollback controls." }
+        }
+      },
+      {
+        type: "input" as const,
+        block_id: "runtime_evidence_block",
+        optional: true,
+        label: { type: "plain_text" as const, text: "Runtime verification evidence" },
+        hint: { type: "plain_text" as const, text: "kind | status | description | optional HTTPS reference" },
+        element: {
+          type: "plain_text_input" as const,
+          action_id: "runtime_evidence",
+          multiline: true,
+          max_length: 1800,
+          placeholder: {
+            type: "plain_text" as const,
+            text: "request_signing | verified | Unsigned requests return 401 | https://..."
           }
         }
       }

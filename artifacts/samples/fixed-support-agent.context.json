@@ -1,0 +1,31 @@
+{
+  "declaredFeatures": [
+    "Answer direct employee support questions",
+    "Create support ticket drafts after user confirmation",
+    "Show support request status in App Home"
+  ],
+  "publicPages": {
+    "landingPageUrl": "https://casey.example.com/slack",
+    "privacyPolicyUrl": "https://casey.example.com/privacy",
+    "supportPageUrl": "https://casey.example.com/support"
+  },
+  "aiDisclosure": {
+    "model": "OpenAI or Anthropic model configured by workspace admin",
+    "retention": "Prompts and responses are retained for 30 days for support debugging unless disabled by an admin.",
+    "trainingUse": "Slack customer data is not used to train foundation models."
+  },
+  "scopeJustifications": {
+    "im:history": "Read only the direct conversation where the user is interacting with the support agent."
+  },
+  "consequentialActions": [
+    "Create a support ticket draft"
+  ],
+  "humanReviewControls": "The user previews and confirms every support ticket before creation.",
+  "runtimeEvidence": [
+    {
+      "kind": "request_signing",
+      "status": "verified",
+      "description": "Automated test rejects unsigned Slack requests."
+    }
+  ]
+}

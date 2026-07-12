@@ -7,12 +7,25 @@ import { LocalStore } from "../src/storage/local-store.js";
 const currentDir = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = join(currentDir, "../../../..");
 
-const [manifestJson, mcpToolsJson] = await Promise.all([
+const [manifestJson, mcpToolsJson, contextJson] = await Promise.all([
   readFile(join(repoRoot, "artifacts/samples/bad-support-agent.manifest.json"), "utf8"),
-  readFile(join(repoRoot, "artifacts/samples/bad-mcp-tools.json"), "utf8")
+  readFile(join(repoRoot, "artifacts/samples/bad-mcp-tools.json"), "utf8"),
+  readFile(join(repoRoot, "artifacts/samples/bad-support-agent.context.json"), "utf8")
 ]);
+const context = JSON.parse(contextJson);
+const formInput = {
+  manifestJson,
+  mcpToolsJson,
+  declaredFeaturesText: context.declaredFeatures.join("\n"),
+  publicPagesText: "landing=\nprivacy=\nsupport=",
+  aiModel: context.aiDisclosure.model,
+  aiRetention: context.aiDisclosure.retention,
+  aiTrainingUse: context.aiDisclosure.trainingUse,
+  consequentialActionsText: context.consequentialActions.join("\n"),
+  humanReviewControls: context.humanReviewControls
+};
 
-const packet = runReviewFromForm({ manifestJson, mcpToolsJson });
+const packet = runReviewFromForm(formInput);
 const store = new LocalStore(join(repoRoot, ".data/smoke"));
 await store.saveReview(packet);
 
@@ -21,5 +34,6 @@ console.log(JSON.stringify({
   grade: packet.overallRisk.grade,
   findings: packet.findings.length,
   actions: packet.recommendedActions.length,
-  policyQueryLength: buildPolicyQueryFromForm({ manifestJson, mcpToolsJson }).length
+  fingerprint: packet.artifactFingerprint.slice(0, 20),
+  policyQueryLength: buildPolicyQueryFromForm(formInput).length
 }, null, 2));

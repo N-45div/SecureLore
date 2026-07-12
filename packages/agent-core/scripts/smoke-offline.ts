@@ -9,7 +9,10 @@ const repoRoot = join(currentDir, "../../../..");
 const manifest = JSON.parse(
   await readFile(join(repoRoot, "artifacts/samples/bad-support-agent.manifest.json"), "utf8")
 );
-const packet = reviewArtifacts({ manifest });
+const reviewContext = JSON.parse(
+  await readFile(join(repoRoot, "artifacts/samples/bad-support-agent.context.json"), "utf8")
+);
+const packet = reviewArtifacts({ manifest, reviewContext });
 const enriched = await enrichReviewPacket(packet);
 
 console.log(JSON.stringify({
