@@ -163,22 +163,28 @@ export async function enrichReviewPacket(
     }
   );
 
+  const reviewerQuestions = Array.isArray(enrichment.reviewerQuestions)
+    ? enrichment.reviewerQuestions.map(String).filter(Boolean)
+    : typeof enrichment.reviewerQuestions === "string"
+      ? [enrichment.reviewerQuestions]
+      : [];
+
   const generatedArtifacts: GeneratedArtifact[] = [
     ...(packet.generatedArtifacts ?? []),
     {
       type: "marketplace_notes",
       title: "Marketplace review notes",
-      content: enrichment.marketplaceNotes
+      content: normalizeText(enrichment.marketplaceNotes)
     },
     {
       type: "privacy_disclosure",
       title: "Privacy disclosure draft",
-      content: enrichment.privacyDisclosure
+      content: normalizeText(enrichment.privacyDisclosure)
     },
     {
       type: "ai_disclosure",
       title: "AI disclosure draft",
-      content: enrichment.aiDisclosure
+      content: normalizeText(enrichment.aiDisclosure)
     }
   ];
 
@@ -191,19 +197,25 @@ export async function enrichReviewPacket(
         id: "review-eve-questions",
         label: "Review Eve follow-up questions",
         priority: "before_submission",
-        description: enrichment.reviewerQuestions.join(" ")
+        description: reviewerQuestions.length > 0
+          ? reviewerQuestions.join(" ")
+          : "No additional model-generated reviewer questions were returned."
       }
     ],
     evalTrace: {
       ...packet.evalTrace,
       checks: [
         ...(packet.evalTrace?.checks ?? []),
-        {
-          name: "eve_openrouter_enrichment",
-          status: "pass",
-          notes: enrichment.critique
+          {
+            name: "eve_openrouter_enrichment",
+            status: "pass",
+            notes: normalizeText(enrichment.critique, "Model enrichment completed.")
         }
       ]
     }
   };
+}
+
+function normalizeText(value: unknown, fallback = "No model-generated text was returned."): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }

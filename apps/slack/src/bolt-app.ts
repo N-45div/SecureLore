@@ -838,6 +838,17 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   app.action("room_promote_lesson", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
+    if (!isReviewer(body.user.id)) {
+      await runAcknowledgedWork(
+        "lesson_promotion_denied",
+        () => client.chat.postMessage({
+          channel: body.user.id,
+          text: "Only a configured SecureLore reviewer can promote shared learning lessons. You can still add evidence to this review."
+        }),
+        logger
+      );
+      return;
+    }
     const reviewId = getActionValue(body.actions[0]);
 
     await runAcknowledgedWork(
@@ -1009,6 +1020,16 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       view.state.values.lesson_kind_block?.lesson_kind?.selected_option?.value ??
       "admin_evidence";
 
+    if (!isReviewer(body.user.id)) {
+      await ack({
+        response_action: "errors",
+        errors: {
+          lesson_block: "Only a configured SecureLore reviewer can promote shared lessons."
+        }
+      });
+      return;
+    }
+
     if (!reviewId || reviewId === "unknown") {
       await ack({
         response_action: "errors",
@@ -1048,13 +1069,17 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           return;
         }
 
-        await policyContextProvider.promoteLearningExample({
-          sourceReviewId: reviewId,
-          slackTeamId: body.team.id,
-          promotedBy: body.user.id,
-          kind,
-          content: sanitizeLearningLesson(lesson)
-        });
+        await withTimeout(
+          policyContextProvider.promoteLearningExample({
+            sourceReviewId: reviewId,
+            slackTeamId: body.team.id,
+            promotedBy: body.user.id,
+            kind,
+            content: sanitizeLearningLesson(lesson)
+          }),
+          10_000,
+          "Lesson promotion exceeded 10000ms"
+        );
         logger("learning_lesson_promoted", {
           reviewId,
           kind,
@@ -1645,7 +1670,7 @@ function evidenceModal(reviewId: string, packet?: ReviewPacket) {
   };
 }
 
-function lessonModal(reviewId: string) {
+export function lessonModal(reviewId: string) {
   return {
     type: "modal" as const,
     callback_id: "securelore_lesson_submit",
@@ -1729,7 +1754,7 @@ function lessonModal(reviewId: string) {
           multiline: true,
           placeholder: {
             type: "plain_text" as const,
-            text: "Example: files:read is acceptable only when the app has a visible user-triggered file review workflow, documents retention, and avoids storing file content."
+            text: "Example: Allow files:read only for visible, user-triggered review; document retention and never store Slack file content."
           }
         }
       }
