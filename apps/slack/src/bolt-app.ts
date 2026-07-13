@@ -154,7 +154,9 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           channel: message.channel,
           thread_ts: threadTs,
           text: `SecureLore found ${search.results.length} live workspace precedent result(s).`,
-          blocks: renderWorkspaceEvidenceBlocks(search)
+          blocks: renderWorkspaceEvidenceBlocks(search),
+          unfurl_links: false,
+          unfurl_media: false
         });
         logger("rts_workspace_evidence_completed", {
           teamId: context.teamId,

@@ -40,7 +40,8 @@ if (
   !boltSource.includes("botId: process.env.SLACK_BOT_ID") ||
   !boltSource.includes("tokenVerificationEnabled: false") ||
   !boltSource.includes("app.error(async") ||
-  !boltSource.includes("waitUntil(messageWork)")
+  !boltSource.includes("waitUntil(messageWork)") ||
+  !boltSource.includes("unfurl_links: false")
 ) {
   throw new Error("Agent View runtime or latency boundaries regressed.");
 }
