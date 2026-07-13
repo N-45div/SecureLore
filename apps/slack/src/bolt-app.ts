@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { App, Assistant, type Receiver } from "@slack/bolt";
+import { App, type Receiver } from "@slack/bolt";
 import { waitUntil } from "@vercel/functions";
 import { enrichReviewPacket, evaluateFindingEvidence } from "@securelore/agent-core";
 import {
@@ -61,122 +61,139 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     receiver: options.receiver
   });
 
-  const assistant = new Assistant({
-    threadStarted: async ({ setSuggestedPrompts, say }) => {
-      await setSuggestedPrompts({
-        title: "Review an agent before admin approval",
-        prompts: [
-          {
-            title: "Start a preflight review",
-            message: "Review a Slack agent"
-          },
-          {
-            title: "How SecureLore works",
-            message: "Help"
-          },
-          {
-            title: "Find workspace precedent",
-            message: "Find workspace precedent for this review"
-          }
-        ]
-      });
-      await say(
-        "SecureLore reviews real Slack manifests and MCP tools, gathers finding-specific evidence, and creates an admin-ready packet."
-      );
+  const suggestedPrompts = [
+    {
+      title: "Start a preflight review",
+      message: "Review a Slack agent"
     },
-    threadContextChanged: async ({ saveThreadContext }) => {
-      await saveThreadContext();
+    {
+      title: "How SecureLore works",
+      message: "Help"
     },
-    userMessage: async ({ event, say, setStatus, setTitle, client, context }) => {
-      const rawText = "text" in event && typeof event.text === "string"
-        ? event.text.trim()
-        : "";
-      const text = rawText.toLowerCase();
-      await setStatus("Preparing SecureLore");
+    {
+      title: "Find workspace precedent",
+      message: "Find workspace precedent for this review"
+    }
+  ];
 
-      if (text === "help" || text.includes("how securelore works")) {
-        await setTitle("SecureLore help");
-        await say(
-          "Start a review here, submit a Slack manifest or MCP tools/list response, then use the Review Room to add evidence and generate an admin brief."
+  app.message(async ({ message, client, context, setStatus }) => {
+    if (("subtype" in message && message.subtype !== undefined) || "bot_id" in message) return;
+    if (!("channel_type" in message) || message.channel_type !== "im") return;
+    if (!("user" in message) || typeof message.user !== "string") return;
+    if (!("text" in message) || typeof message.text !== "string") return;
+
+    const rawText = message.text.trim();
+    const text = rawText.toLowerCase();
+    const threadTs = "thread_ts" in message && typeof message.thread_ts === "string"
+      ? message.thread_ts
+      : message.ts;
+    const replyText = (responseText: string) => client.chat.postMessage({
+      channel: message.channel,
+      thread_ts: threadTs,
+      text: responseText
+    });
+    const setTitle = (title: string) => client.assistant.threads.setTitle({
+      channel_id: message.channel,
+      thread_ts: threadTs,
+      title
+    });
+
+    await setStatus("Preparing SecureLore");
+
+    if (text === "help" || text.includes("how securelore works")) {
+      await setTitle("SecureLore help");
+      await replyText(
+        "Start a review here, submit a Slack manifest or MCP tools/list response, then use the Review Room to add evidence and generate an admin brief."
+      );
+      return;
+    }
+
+    if (isWorkspaceEvidenceRequest(rawText)) {
+      await setTitle("Workspace evidence scout");
+      const actionToken = (message as typeof message & { action_token?: string }).action_token;
+      if (!actionToken) {
+        await replyText(
+          "Slack did not provide a live search token. Send `Find workspace precedent: <topic>` again as a new message in this SecureLore conversation."
         );
         return;
       }
 
-      if (isWorkspaceEvidenceRequest(rawText)) {
-        await setTitle("Workspace evidence scout");
-        const actionToken = (event as typeof event & { action_token?: string }).action_token;
-        if (!actionToken) {
-          await say(
-            "Slack did not provide a live search token. Send `Find workspace precedent: <topic>` again in the SecureLore Agent conversation."
-          );
-          return;
-        }
-
+      try {
+        await setStatus("Searching live workspace precedent");
+        let packet: ReviewPacket | null = null;
         try {
-          await setStatus("Searching live workspace precedent");
           const latest = await store.listRecentReviews({
             slackTeamId: context.teamId,
-            slackUserId: context.userId,
+            slackUserId: message.user,
             limit: 1
           });
-          const packet = latest[0]
+          packet = latest[0]
             ? await store.getReview(latest[0].id, context.teamId)
             : null;
-          const search = await searchWorkspaceEvidence(client, {
-            query: buildWorkspaceEvidenceQuery(rawText, packet ?? undefined),
-            actionToken
-          });
-          await say({
-            text: `SecureLore found ${search.results.length} live workspace precedent result(s).`,
-            blocks: renderWorkspaceEvidenceBlocks(search)
-          });
-          logger("rts_workspace_evidence_completed", {
-            teamId: context.teamId,
-            userId: context.userId,
-            resultCount: search.results.length
-          });
         } catch (error) {
-          logger("rts_workspace_evidence_failed", {
+          logger("rts_review_context_unavailable", {
             teamId: context.teamId,
-            userId: context.userId,
-            errorCode: error && typeof error === "object" && "code" in error ? error.code : "unknown"
+            userId: message.user,
+            error: error instanceof Error ? error.message : "unknown"
           });
-          await say(describeRtsError(error));
         }
-        return;
+
+        const search = await searchWorkspaceEvidence(client, {
+          query: buildWorkspaceEvidenceQuery(rawText, packet ?? undefined),
+          actionToken
+        });
+        await client.chat.postMessage({
+          channel: message.channel,
+          thread_ts: threadTs,
+          text: `SecureLore found ${search.results.length} live workspace precedent result(s).`,
+          blocks: renderWorkspaceEvidenceBlocks(search)
+        });
+        logger("rts_workspace_evidence_completed", {
+          teamId: context.teamId,
+          userId: message.user,
+          resultCount: search.results.length
+        });
+      } catch (error) {
+        logger("rts_workspace_evidence_failed", {
+          teamId: context.teamId,
+          userId: message.user,
+          errorCode: error && typeof error === "object" && "code" in error ? error.code : "unknown"
+        });
+        await replyText(describeRtsError(error));
       }
-
-      await setTitle("Slack agent preflight review");
-      await say({
-        text: "Start a policy-grounded review with real Slack and MCP artifacts.",
-        blocks: [
-          {
-            type: "section",
-            text: {
-              type: "mrkdwn",
-              text: "*Ready to review an agent?*\nSecureLore will check scopes, endpoints, disclosures, MCP metadata, and required evidence."
-            }
-          },
-          {
-            type: "actions",
-            elements: [
-              {
-                type: "button",
-                text: {
-                  type: "plain_text",
-                  text: "Start review"
-                },
-                style: "primary",
-                action_id: "assistant_start_review"
-              }
-            ]
-          }
-        ]
-      });
+      return;
     }
-  });
 
-  app.use(assistant.getMiddleware());
+    await setTitle("Slack agent preflight review");
+    await client.chat.postMessage({
+      channel: message.channel,
+      thread_ts: threadTs,
+      text: "Start a policy-grounded review with real Slack and MCP artifacts.",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "*Ready to review an agent?*\nSecureLore will check scopes, endpoints, disclosures, MCP metadata, and required evidence."
+          }
+        },
+        {
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: {
+                type: "plain_text",
+                text: "Start review"
+              },
+              style: "primary",
+              action_id: "assistant_start_review"
+            }
+          ]
+        }
+      ]
+    });
+  });
 
   app.action("assistant_start_review", async ({ ack, body, client }) => {
     await ack();
@@ -205,13 +222,39 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   });
 
   app.event("app_home_opened", async ({ event, client, context }) => {
-    if (event.tab === "messages") return;
+    if (event.tab === "messages") {
+      try {
+        await client.assistant.threads.setSuggestedPrompts({
+          channel_id: event.channel,
+          title: "Review an agent before admin approval",
+          prompts: suggestedPrompts
+        });
+        logger("agent_prompts_published", {
+          teamId: context.teamId,
+          userId: event.user
+        });
+      } catch (error) {
+        logger("agent_prompts_failed", {
+          teamId: context.teamId,
+          userId: event.user,
+          error: error instanceof Error ? error.message : "unknown"
+        });
+      }
+      return;
+    }
 
     const reviewerMode = isReviewer(event.user);
     const reviews = await store.listRecentReviews({
       slackTeamId: context.teamId,
       slackUserId: reviewerMode ? undefined : event.user,
       limit: 10
+    }).catch((error) => {
+      logger("app_home_reviews_unavailable", {
+        teamId: context.teamId,
+        userId: event.user,
+        error: error instanceof Error ? error.message : "unknown"
+      });
+      return [];
     });
     await client.views.publish({
       user_id: event.user,

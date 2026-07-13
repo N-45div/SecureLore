@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   buildWorkspaceEvidenceQuery,
   isWorkspaceEvidenceRequest,
@@ -5,6 +6,32 @@ import {
   searchWorkspaceEvidence
 } from "../src/rts-search.js";
 import { isAuthorizedReviewer, parseReviewerIds } from "../src/governance.js";
+
+const manifest = JSON.parse(
+  readFileSync(new URL("../../manifest.json", import.meta.url), "utf8")
+) as {
+  features?: { agent_view?: unknown; assistant_view?: unknown };
+  settings?: { event_subscriptions?: { bot_events?: string[] } };
+};
+const boltSource = readFileSync(
+  new URL("../../src/bolt-app.ts", import.meta.url),
+  "utf8"
+);
+
+if (!manifest.features?.agent_view || manifest.features.assistant_view) {
+  throw new Error("Slack manifest must use agent_view only.");
+}
+const botEvents = manifest.settings?.event_subscriptions?.bot_events ?? [];
+if (!botEvents.includes("app_home_opened") || !botEvents.includes("message.im")) {
+  throw new Error("Agent View requires app_home_opened and message.im events.");
+}
+if (
+  boltSource.includes("new Assistant(") ||
+  !boltSource.includes("app.message(") ||
+  !boltSource.includes("setSuggestedPrompts")
+) {
+  throw new Error("Agent View runtime regressed to the legacy Assistant middleware.");
+}
 
 let calledMethod = "";
 let calledOptions: Record<string, unknown> = {};
@@ -53,5 +80,6 @@ console.log(JSON.stringify({
   zeroCopy: true,
   results: search.results.length,
   blocks: renderWorkspaceEvidenceBlocks(search).length,
-  reviewerBoundary: true
+  reviewerBoundary: true,
+  agentViewContract: true
 }, null, 2));
