@@ -34,7 +34,8 @@ if (
   !boltSource.includes("runBestEffort") ||
   !boltSource.includes("botId: process.env.SLACK_BOT_ID") ||
   !boltSource.includes("tokenVerificationEnabled: false") ||
-  !boltSource.includes("app.error(async")
+  !boltSource.includes("app.error(async") ||
+  !boltSource.includes("waitUntil(messageWork)")
 ) {
   throw new Error("Agent View runtime or latency boundaries regressed.");
 }

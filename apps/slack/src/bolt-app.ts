@@ -91,11 +91,13 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     }
   ];
 
-  app.message(async ({ message, client, context, setStatus }) => {
-    if (("subtype" in message && message.subtype !== undefined) || "bot_id" in message) return;
-    if (!("channel_type" in message) || message.channel_type !== "im") return;
-    if (!("user" in message) || typeof message.user !== "string") return;
-    if (!("text" in message) || typeof message.text !== "string") return;
+  app.message(async (args) => {
+    const messageWork = (async () => {
+      const { message, client, context, setStatus } = args;
+      if (("subtype" in message && message.subtype !== undefined) || "bot_id" in message) return;
+      if (!("channel_type" in message) || message.channel_type !== "im") return;
+      if (!("user" in message) || typeof message.user !== "string") return;
+      if (!("text" in message) || typeof message.text !== "string") return;
 
     const rawText = message.text.trim();
     const text = rawText.toLowerCase();
@@ -190,34 +192,41 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       () => setTitle("Slack agent preflight review"),
       logger
     );
-    await client.chat.postMessage({
-      channel: message.channel,
-      thread_ts: threadTs,
-      text: "Start a policy-grounded review with real Slack and MCP artifacts.",
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: "*Ready to review an agent?*\nSecureLore will check scopes, endpoints, disclosures, MCP metadata, and required evidence."
-          }
-        },
-        {
-          type: "actions",
-          elements: [
-            {
-              type: "button",
-              text: {
-                type: "plain_text",
-                text: "Start review"
-              },
-              style: "primary",
-              action_id: "assistant_start_review"
+      await client.chat.postMessage({
+        channel: message.channel,
+        thread_ts: threadTs,
+        text: "Start a policy-grounded review with real Slack and MCP artifacts.",
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "*Ready to review an agent?*\nSecureLore will check scopes, endpoints, disclosures, MCP metadata, and required evidence."
             }
-          ]
-        }
-      ]
-    });
+          },
+          {
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: {
+                  type: "plain_text",
+                  text: "Start review"
+                },
+                style: "primary",
+                action_id: "assistant_start_review"
+              }
+            ]
+          }
+        ]
+      });
+    })();
+
+    if (isVercel) {
+      waitUntil(messageWork);
+    } else {
+      await messageWork;
+    }
   });
 
   app.action("assistant_start_review", async ({ ack, body, client }) => {
