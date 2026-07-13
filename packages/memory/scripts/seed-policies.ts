@@ -17,7 +17,10 @@ const chunks = JSON.parse(
 
 const memory = new PolicyMemory(
   new NeonMemoryStore(requireEnv("DATABASE_URL")),
-  new CohereEmbeddingProvider({ apiKey: requireEnv("COHERE_API_KEY") })
+  new CohereEmbeddingProvider({
+    apiKey: requireEnv("COHERE_API_KEY"),
+    model: process.env.COHERE_EMBED_MODEL
+  })
 );
 
 await memory.upsertChunks(chunks);

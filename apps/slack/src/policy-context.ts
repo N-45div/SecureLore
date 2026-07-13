@@ -75,10 +75,17 @@ export class CanonicalPolicyContextProvider implements PolicyContextProvider {
 export class NeonCoherePolicyContextProvider implements PolicyContextProvider {
   private readonly memory: PolicyMemory;
 
-  constructor(options: { databaseUrl: string; cohereApiKey: string }) {
+  constructor(options: {
+    databaseUrl: string;
+    cohereApiKey: string;
+    cohereModel?: string;
+  }) {
     this.memory = new PolicyMemory(
       new NeonMemoryStore(options.databaseUrl),
-      new CohereEmbeddingProvider({ apiKey: options.cohereApiKey })
+      new CohereEmbeddingProvider({
+        apiKey: options.cohereApiKey,
+        model: options.cohereModel
+      })
     );
   }
 
@@ -166,7 +173,8 @@ export function createPolicyContextProvider(
     return new ResilientPolicyContextProvider(
       new NeonCoherePolicyContextProvider({
         databaseUrl: env.DATABASE_URL,
-        cohereApiKey: env.COHERE_API_KEY
+        cohereApiKey: env.COHERE_API_KEY,
+        cohereModel: env.COHERE_EMBED_MODEL
       }),
       options
     );

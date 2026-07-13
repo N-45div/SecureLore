@@ -22,7 +22,7 @@ export class CohereEmbeddingProvider implements EmbeddingProvider {
       timeoutInSeconds: options.timeoutInSeconds ?? 5,
       maxRetries: 0
     });
-    this.model = options.model ?? "embed-v4.0";
+    this.model = options.model ?? "embed-english-v3.0";
     this.outputDimension = options.outputDimension ?? 1024;
   }
 
