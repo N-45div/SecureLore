@@ -56,14 +56,24 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
 
   const app = new App({
     token: process.env.SLACK_BOT_TOKEN,
+    botId: process.env.SLACK_BOT_ID,
+    botUserId: process.env.SLACK_BOT_USER_ID,
     signingSecret: process.env.SLACK_SIGNING_SECRET,
     appToken: socketMode ? process.env.SLACK_APP_TOKEN : undefined,
     socketMode,
     receiver: options.receiver,
+    tokenVerificationEnabled: false,
     clientOptions: {
       timeout: 12_000,
       retryConfig: { retries: 0 }
     }
+  });
+
+  app.error(async (error) => {
+    logger("bolt_request_failed", {
+      code: error && typeof error === "object" && "code" in error ? error.code : "unknown",
+      message: error instanceof Error ? error.message : "unknown"
+    });
   });
 
   const suggestedPrompts = [

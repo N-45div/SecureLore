@@ -31,7 +31,10 @@ if (
   !boltSource.includes("app.message(") ||
   !boltSource.includes("setSuggestedPrompts") ||
   !boltSource.includes("timeout: 12_000") ||
-  !boltSource.includes("runBestEffort")
+  !boltSource.includes("runBestEffort") ||
+  !boltSource.includes("botId: process.env.SLACK_BOT_ID") ||
+  !boltSource.includes("tokenVerificationEnabled: false") ||
+  !boltSource.includes("app.error(async")
 ) {
   throw new Error("Agent View runtime or latency boundaries regressed.");
 }
