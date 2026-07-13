@@ -49,8 +49,8 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     local: isVercel ? undefined : new LocalStore(join(repoRoot, ".data/slack")),
     databaseUrl: process.env.DATABASE_URL
   });
-  const policyContextProvider = createPolicyContextProvider(process.env);
   const logger = createRuntimeLogger();
+  const policyContextProvider = createPolicyContextProvider(process.env, { logger });
   const reviewerIds = parseReviewerIds(process.env.SLACK_REVIEWER_IDS);
   const isReviewer = (userId: string) => isAuthorizedReviewer(reviewerIds, userId);
 
@@ -335,16 +335,21 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           policyContext,
           workspacePolicyJson: process.env.SECURELORE_WORKSPACE_POLICY_JSON
         });
-        const packet = await enrichReviewPacket(deterministicPacket, {
-          openRouterApiKey: process.env.OPENROUTER_API_KEY,
-          model: process.env.OPENROUTER_MODEL
-        });
+        const packet = await enrichReviewPacketBestEffort(
+          deterministicPacket,
+          logger,
+          "file_review"
+        );
 
-        await store.saveReview(packet, {
-          slackTeamId: context.teamId,
-          slackChannelId: event.channel_id,
-          slackUserId: event.user_id
-        });
+        await withTimeout(
+          store.saveReview(packet, {
+            slackTeamId: context.teamId,
+            slackChannelId: event.channel_id,
+            slackUserId: event.user_id
+          }),
+          8_000,
+          "Review persistence exceeded 8000ms"
+        );
 
         await client.chat.postMessage({
           channel: event.channel_id,
@@ -435,24 +440,40 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
           ...formInput,
           policyContext
         });
-        let packet = await enrichReviewPacket(deterministicPacket, {
-          openRouterApiKey: process.env.OPENROUTER_API_KEY,
-          model: process.env.OPENROUTER_MODEL
-        });
+        let packet = await enrichReviewPacketBestEffort(
+          deterministicPacket,
+          logger,
+          "modal_review"
+        );
         const parentReviewId = view.private_metadata || undefined;
         if (parentReviewId) {
-          const parentPacket = await store.getReview(parentReviewId, body.team?.id);
-          if (parentPacket) packet = compareReviewPackets(parentPacket, packet);
+          try {
+            const parentPacket = await withTimeout(
+              store.getReview(parentReviewId, body.team?.id),
+              3_000,
+              "Parent review lookup exceeded 3000ms"
+            );
+            if (parentPacket) packet = compareReviewPackets(parentPacket, packet);
+          } catch (error) {
+            logger("modal_review_comparison_skipped", {
+              reviewId: parentReviewId,
+              reason: error instanceof Error ? error.message : "lookup_failed"
+            });
+          }
         }
         logger("modal_review_enriched", {
           reviewId: packet.reviewId,
           grade: packet.overallRisk.grade,
           findings: packet.findings.length
         });
-        await store.saveReview(packet, {
-          slackTeamId: body.team?.id,
-          slackUserId: body.user.id
-        });
+        await withTimeout(
+          store.saveReview(packet, {
+            slackTeamId: body.team?.id,
+            slackUserId: body.user.id
+          }),
+          8_000,
+          "Review persistence exceeded 8000ms"
+        );
         logger("modal_review_saved", {
           reviewId: packet.reviewId
         });
@@ -1257,6 +1278,41 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string)
   });
 }
 
+async function enrichReviewPacketBestEffort(
+  packet: ReviewPacket,
+  logger: ReturnType<typeof createRuntimeLogger>,
+  eventPrefix: string
+): Promise<ReviewPacket> {
+  try {
+    return await withTimeout(
+      enrichReviewPacket(packet, {
+        openRouterApiKey: process.env.OPENROUTER_API_KEY,
+        model: process.env.OPENROUTER_MODEL,
+        timeoutMs: 10_000
+      }),
+      11_000,
+      "OpenRouter enrichment exceeded 11000ms"
+    );
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "enrichment_failed";
+    logger(`${eventPrefix}_enrichment_fallback`, { reason });
+    return {
+      ...packet,
+      evalTrace: {
+        ...packet.evalTrace,
+        checks: [
+          ...(packet.evalTrace?.checks ?? []),
+          {
+            name: "eve_openrouter_enrichment",
+            status: "not_run",
+            notes: `Deterministic review preserved because optional enrichment was unavailable: ${reason}`
+          }
+        ]
+      }
+    };
+  }
+}
+
 function getActionValue(action: unknown): string {
   if (
     action &&
@@ -1292,7 +1348,19 @@ async function postReviewRoom(options: {
   store: ReviewStore;
   logger: ReturnType<typeof createRuntimeLogger>;
 }): Promise<void> {
-  const evidence = await options.store.listReviewEvidence(options.packet.reviewId, 5);
+  let evidence: Awaited<ReturnType<ReviewStore["listReviewEvidence"]>> = [];
+  try {
+    evidence = await withTimeout(
+      options.store.listReviewEvidence(options.packet.reviewId, 5),
+      3_000,
+      "Review evidence lookup exceeded 3000ms"
+    );
+  } catch (error) {
+    options.logger("review_room_evidence_unavailable", {
+      reviewId: options.packet.reviewId,
+      reason: error instanceof Error ? error.message : "lookup_failed"
+    });
+  }
   await options.client.chat.postMessage({
     channel: options.channel,
     text: `SecureLore review room for ${options.packet.reviewId}`,

@@ -28,6 +28,26 @@ export class PolicyMemory {
     return this.store.retrievePolicyChunks(embedding, limit);
   }
 
+  async retrieveReviewContext(
+    query: string,
+    slackTeamId?: string,
+    policyLimit = 5,
+    learningLimit = 3
+  ): Promise<{
+    chunks: RetrievedPolicyChunk[];
+    lessons: RetrievedLearningExample[];
+  }> {
+    const [embedding] = await this.embeddings.embedTexts([query], "search_query");
+    const [chunks, lessons] = await Promise.all([
+      this.store.retrievePolicyChunks(embedding, policyLimit),
+      slackTeamId
+        ? this.store.retrieveLearningExamples(embedding, slackTeamId, learningLimit)
+        : Promise.resolve([])
+    ]);
+
+    return { chunks, lessons };
+  }
+
   async promoteLearningExample(input: LearningExampleInput): Promise<void> {
     const [embedding] = await this.embeddings.embedTexts(
       [`${input.kind}\n${input.content}`],

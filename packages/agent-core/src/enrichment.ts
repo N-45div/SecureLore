@@ -10,6 +10,7 @@ import { completeJson } from "./openrouter.js";
 export interface EnrichmentOptions {
   openRouterApiKey?: string;
   model?: string;
+  timeoutMs?: number;
 }
 
 interface EnrichmentResponse {
@@ -82,7 +83,8 @@ export async function evaluateFindingEvidence(
     ],
     {
       apiKey: options.openRouterApiKey,
-      model: options.model
+      model: options.model,
+      timeoutMs: options.timeoutMs
     }
   );
 
@@ -156,7 +158,8 @@ export async function enrichReviewPacket(
     ],
     {
       apiKey: options.openRouterApiKey,
-      model: options.model
+      model: options.model,
+      timeoutMs: options.timeoutMs
     }
   );
 

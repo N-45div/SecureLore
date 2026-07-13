@@ -8,6 +8,7 @@ export interface OpenRouterOptions {
   model?: string;
   siteUrl?: string;
   appName?: string;
+  timeoutMs?: number;
 }
 
 export async function completeJson<T>(
@@ -16,6 +17,7 @@ export async function completeJson<T>(
 ): Promise<T> {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
+    signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
     headers: {
       authorization: `Bearer ${options.apiKey}`,
       "content-type": "application/json",

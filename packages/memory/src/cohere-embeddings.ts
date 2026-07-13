@@ -15,8 +15,13 @@ export class CohereEmbeddingProvider implements EmbeddingProvider {
     apiKey: string;
     model?: string;
     outputDimension?: number;
+    timeoutInSeconds?: number;
   }) {
-    this.client = new CohereClientV2({ token: options.apiKey });
+    this.client = new CohereClientV2({
+      token: options.apiKey,
+      timeoutInSeconds: options.timeoutInSeconds ?? 5,
+      maxRetries: 0
+    });
     this.model = options.model ?? "embed-v4.0";
     this.outputDimension = options.outputDimension ?? 1024;
   }
