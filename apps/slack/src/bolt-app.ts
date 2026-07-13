@@ -32,6 +32,7 @@ import {
   buildWorkspaceEvidenceQuery,
   describeRtsError,
   isWorkspaceEvidenceRequest,
+  missingRtsActionTokenMessage,
   renderWorkspaceEvidenceBlocks,
   searchWorkspaceEvidence
 } from "./rts-search.js";
@@ -111,10 +112,14 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     if (isWorkspaceEvidenceRequest(rawText)) {
       await setTitle("Workspace evidence scout");
       const actionToken = (message as typeof message & { action_token?: string }).action_token;
+      logger("agent_workspace_evidence_requested", {
+        teamId: context.teamId,
+        userId: message.user,
+        hasActionToken: Boolean(actionToken),
+        isThreadReply: "thread_ts" in message && typeof message.thread_ts === "string"
+      });
       if (!actionToken) {
-        await replyText(
-          "Slack did not provide a live search token. Send `Find workspace precedent: <topic>` again as a new message in this SecureLore conversation."
-        );
+        await replyText(missingRtsActionTokenMessage);
         return;
       }
 

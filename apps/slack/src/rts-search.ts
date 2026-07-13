@@ -18,6 +18,12 @@ export interface WorkspaceEvidenceSearch {
   results: WorkspaceEvidenceResult[];
 }
 
+export const missingRtsActionTokenMessage = [
+  "Live workspace search is not authorized for this SecureLore installation.",
+  "An admin must open the SecureLore app settings, confirm `search:read.public` under OAuth & Permissions, then select *Reinstall to Workspace*.",
+  "After reinstallation, send this request again as a new message."
+].join(" ");
+
 export function isWorkspaceEvidenceRequest(text: string): boolean {
   const normalized = text.trim().toLowerCase();
   return [

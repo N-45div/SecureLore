@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import {
   buildWorkspaceEvidenceQuery,
   isWorkspaceEvidenceRequest,
+  missingRtsActionTokenMessage,
   renderWorkspaceEvidenceBlocks,
   searchWorkspaceEvidence
 } from "../src/rts-search.js";
@@ -59,6 +60,12 @@ const search = await searchWorkspaceEvidence({
 
 if (!isWorkspaceEvidenceRequest("Find workspace precedent for this review")) {
   throw new Error("RTS request intent was not detected.");
+}
+if (
+  !missingRtsActionTokenMessage.includes("search:read.public") ||
+  !missingRtsActionTokenMessage.includes("Reinstall to Workspace")
+) {
+  throw new Error("Missing RTS authorization guidance is not actionable.");
 }
 if (calledMethod !== "assistant.search.context") {
   throw new Error("RTS method was not called.");
