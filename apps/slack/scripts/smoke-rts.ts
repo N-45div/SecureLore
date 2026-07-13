@@ -29,9 +29,11 @@ if (!botEvents.includes("app_home_opened") || !botEvents.includes("message.im"))
 if (
   boltSource.includes("new Assistant(") ||
   !boltSource.includes("app.message(") ||
-  !boltSource.includes("setSuggestedPrompts")
+  !boltSource.includes("setSuggestedPrompts") ||
+  !boltSource.includes("timeout: 12_000") ||
+  !boltSource.includes("runBestEffort")
 ) {
-  throw new Error("Agent View runtime regressed to the legacy Assistant middleware.");
+  throw new Error("Agent View runtime or latency boundaries regressed.");
 }
 
 let calledMethod = "";

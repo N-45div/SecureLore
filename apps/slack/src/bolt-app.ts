@@ -59,7 +59,11 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     signingSecret: process.env.SLACK_SIGNING_SECRET,
     appToken: socketMode ? process.env.SLACK_APP_TOKEN : undefined,
     socketMode,
-    receiver: options.receiver
+    receiver: options.receiver,
+    clientOptions: {
+      timeout: 12_000,
+      retryConfig: { retries: 0 }
+    }
   });
 
   const suggestedPrompts = [
@@ -99,10 +103,8 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       title
     });
 
-    await setStatus("Preparing SecureLore");
-
     if (text === "help" || text.includes("how securelore works")) {
-      await setTitle("SecureLore help");
+      await runBestEffort("agent_title_update", () => setTitle("SecureLore help"), logger);
       await replyText(
         "Start a review here, submit a Slack manifest or MCP tools/list response, then use the Review Room to add evidence and generate an admin brief."
       );
@@ -110,7 +112,10 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     }
 
     if (isWorkspaceEvidenceRequest(rawText)) {
-      await setTitle("Workspace evidence scout");
+      await Promise.all([
+        runBestEffort("agent_title_update", () => setTitle("Workspace evidence scout"), logger),
+        runBestEffort("agent_status_update", () => setStatus("Searching live workspace precedent"), logger)
+      ]);
       const actionToken = (message as typeof message & { action_token?: string }).action_token;
       logger("agent_workspace_evidence_requested", {
         teamId: context.teamId,
@@ -124,17 +129,18 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       }
 
       try {
-        await setStatus("Searching live workspace precedent");
         let packet: ReviewPacket | null = null;
         try {
-          const latest = await store.listRecentReviews({
-            slackTeamId: context.teamId,
-            slackUserId: message.user,
-            limit: 1
-          });
-          packet = latest[0]
-            ? await store.getReview(latest[0].id, context.teamId)
-            : null;
+          packet = await withTimeout((async () => {
+            const latest = await store.listRecentReviews({
+              slackTeamId: context.teamId,
+              slackUserId: message.user,
+              limit: 1
+            });
+            return latest[0]
+              ? store.getReview(latest[0].id, context.teamId)
+              : null;
+          })(), 1_500, "Review context lookup timed out");
         } catch (error) {
           logger("rts_review_context_unavailable", {
             teamId: context.teamId,
@@ -169,7 +175,11 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       return;
     }
 
-    await setTitle("Slack agent preflight review");
+    await runBestEffort(
+      "agent_title_update",
+      () => setTitle("Slack agent preflight review"),
+      logger
+    );
     await client.chat.postMessage({
       channel: message.channel,
       thread_ts: threadTs,
@@ -1111,6 +1121,37 @@ function createRuntimeLogger() {
       ...fields
     }));
   };
+}
+
+async function runBestEffort(
+  event: string,
+  operation: () => Promise<unknown>,
+  logger: ReturnType<typeof createRuntimeLogger>,
+  timeoutMs = 1_200
+): Promise<void> {
+  try {
+    await withTimeout(operation(), timeoutMs, `${event} timed out`);
+  } catch (error) {
+    logger(`${event}_skipped`, {
+      error: error instanceof Error ? error.message : "unknown"
+    });
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
 }
 
 function getActionValue(action: unknown): string {
