@@ -76,21 +76,6 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     });
   });
 
-  const suggestedPrompts = [
-    {
-      title: "Start a preflight review",
-      message: "Review a Slack agent"
-    },
-    {
-      title: "How SecureLore works",
-      message: "Help"
-    },
-    {
-      title: "Find workspace precedent",
-      message: "Find workspace precedent for this review"
-    }
-  ];
-
   app.message(async (args) => {
     const messageWork = (async () => {
       const { message, client, context, setStatus } = args;
@@ -257,23 +242,10 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
 
   app.event("app_home_opened", async ({ event, client, context }) => {
     if (event.tab === "messages") {
-      try {
-        await client.assistant.threads.setSuggestedPrompts({
-          channel_id: event.channel,
-          title: "Review an agent before admin approval",
-          prompts: suggestedPrompts
-        });
-        logger("agent_prompts_published", {
-          teamId: context.teamId,
-          userId: event.user
-        });
-      } catch (error) {
-        logger("agent_prompts_failed", {
-          teamId: context.teamId,
-          userId: event.user,
-          error: error instanceof Error ? error.message : "unknown"
-        });
-      }
+      logger("agent_messages_opened", {
+        teamId: context.teamId,
+        userId: event.user
+      });
       return;
     }
 

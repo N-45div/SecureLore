@@ -11,7 +11,10 @@ import { isAuthorizedReviewer, parseReviewerIds } from "../src/governance.js";
 const manifest = JSON.parse(
   readFileSync(new URL("../../manifest.json", import.meta.url), "utf8")
 ) as {
-  features?: { agent_view?: unknown; assistant_view?: unknown };
+  features?: {
+    agent_view?: { suggested_prompts?: unknown[] };
+    assistant_view?: unknown;
+  };
   settings?: { event_subscriptions?: { bot_events?: string[] } };
 };
 const boltSource = readFileSync(
@@ -22,6 +25,9 @@ const boltSource = readFileSync(
 if (!manifest.features?.agent_view || manifest.features.assistant_view) {
   throw new Error("Slack manifest must use agent_view only.");
 }
+if ((manifest.features.agent_view.suggested_prompts?.length ?? 0) < 3) {
+  throw new Error("Agent View must expose manifest-backed suggested prompts.");
+}
 const botEvents = manifest.settings?.event_subscriptions?.bot_events ?? [];
 if (!botEvents.includes("app_home_opened") || !botEvents.includes("message.im")) {
   throw new Error("Agent View requires app_home_opened and message.im events.");
@@ -29,7 +35,6 @@ if (!botEvents.includes("app_home_opened") || !botEvents.includes("message.im"))
 if (
   boltSource.includes("new Assistant(") ||
   !boltSource.includes("app.message(") ||
-  !boltSource.includes("setSuggestedPrompts") ||
   !boltSource.includes("timeout: 12_000") ||
   !boltSource.includes("runBestEffort") ||
   !boltSource.includes("botId: process.env.SLACK_BOT_ID") ||
@@ -66,6 +71,9 @@ const search = await searchWorkspaceEvidence({
 
 if (!isWorkspaceEvidenceRequest("Find workspace precedent for this review")) {
   throw new Error("RTS request intent was not detected.");
+}
+if (buildWorkspaceEvidenceQuery("Find workspace precedent: files:read approval") !== "files:read approval") {
+  throw new Error("Explicit RTS terms were expanded into an over-constrained query.");
 }
 if (
   !missingRtsActionTokenMessage.includes("search:read.public") ||

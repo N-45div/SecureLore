@@ -45,7 +45,7 @@ export function buildWorkspaceEvidenceQuery(text: string, packet?: ReviewPacket)
     .slice(0, 260);
 
   if (requestedTopic && !/^(this|this review|the review)$/i.test(requestedTopic)) {
-    return `What internal policy or prior Slack app approval discussion is relevant to ${requestedTopic}?`;
+    return requestedTopic;
   }
 
   const findingTopics = packet?.findings
