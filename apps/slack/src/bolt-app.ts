@@ -219,27 +219,42 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   app.action("assistant_start_review", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: reviewModal()
-    });
+    await runAcknowledgedWork(
+      "assistant_review_modal",
+      () => client.views.open({ trigger_id: body.trigger_id, view: reviewModal() }),
+      logger
+    );
   });
 
-  app.command("/securelore", async ({ command, ack, respond }) => {
+  app.command("/securelore", async ({ command, ack, respond, client }) => {
     await ack();
 
     if (!command.text.trim().startsWith("review")) {
-      await respond({
-        response_type: "ephemeral",
-        text: "Use `/securelore review` to open a preflight review form."
-      });
+      await runAcknowledgedWork(
+        "slash_usage_response",
+        () => respond({
+          response_type: "ephemeral",
+          text: "Use `/securelore review` to open a preflight review form."
+        }),
+        logger
+      );
       return;
     }
 
-    await app.client.views.open({
-      trigger_id: command.trigger_id,
-      view: reviewModal()
+    logger("slash_review_requested", {
+      teamId: command.team_id,
+      userId: command.user_id,
+      channelId: command.channel_id
     });
+    await runAcknowledgedWork(
+      "slash_review_modal",
+      () => client.views.open({ trigger_id: command.trigger_id, view: reviewModal() }),
+      logger,
+      () => respond({
+        response_type: "ephemeral",
+        text: "SecureLore could not open the review form. Run `/securelore review` again."
+      })
+    );
   });
 
   app.event("app_home_opened", async ({ event, client, context }) => {
@@ -251,26 +266,40 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       return;
     }
 
-    const reviewerMode = isReviewer(event.user);
-    const reviews = await store.listRecentReviews({
-      slackTeamId: context.teamId,
-      slackUserId: reviewerMode ? undefined : event.user,
-      limit: 10
-    }).catch((error) => {
-      logger("app_home_reviews_unavailable", {
+    const homeWork = (async () => {
+      const reviewerMode = isReviewer(event.user);
+      const reviews = await store.listRecentReviews({
+        slackTeamId: context.teamId,
+        slackUserId: reviewerMode ? undefined : event.user,
+        limit: 10
+      }).catch((error) => {
+        logger("app_home_reviews_unavailable", {
+          teamId: context.teamId,
+          userId: event.user,
+          error: error instanceof Error ? error.message : "unknown"
+        });
+        return [];
+      });
+      await client.views.publish({
+        user_id: event.user,
+        view: {
+          type: "home",
+          blocks: renderAppHome(reviews, { reviewerMode })
+        }
+      });
+      logger("app_home_published", {
         teamId: context.teamId,
         userId: event.user,
-        error: error instanceof Error ? error.message : "unknown"
+        reviewCount: reviews.length
       });
-      return [];
+    })().catch((error) => {
+      logger("app_home_publish_failed", {
+        teamId: context.teamId,
+        userId: event.user,
+        message: error instanceof Error ? error.message : "unknown"
+      });
     });
-    await client.views.publish({
-      user_id: event.user,
-      view: {
-        type: "home",
-        blocks: renderAppHome(reviews, { reviewerMode })
-      }
-    });
+    await retainSlackWork(homeWork);
   });
 
   // Agent View supplies the active Slack context on later message.im events.
@@ -285,57 +314,67 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     const botToken = process.env.SLACK_BOT_TOKEN;
     if (!botToken) return;
 
-    try {
-      const fileResponse = await client.files.info({
-        file: event.file_id
-      });
-      const file = fileResponse.file as SlackFileInfo | undefined;
-      if (!file) {
-        throw new Error("Slack file metadata was not returned.");
+    const fileWork = (async () => {
+      try {
+        const fileResponse = await client.files.info({
+          file: event.file_id
+        });
+        const file = fileResponse.file as SlackFileInfo | undefined;
+        if (!file) {
+          throw new Error("Slack file metadata was not returned.");
+        }
+
+        const rawJson = await downloadSlackFileJson(file, botToken);
+        const classified = classifySlackFileJson(rawJson);
+        const policyContext = await policyContextProvider.retrieve(
+          buildPolicyQueryFromForm(classified),
+          context.teamId
+        );
+        const deterministicPacket = runReviewFromForm({
+          ...classified,
+          policyContext,
+          workspacePolicyJson: process.env.SECURELORE_WORKSPACE_POLICY_JSON
+        });
+        const packet = await enrichReviewPacket(deterministicPacket, {
+          openRouterApiKey: process.env.OPENROUTER_API_KEY,
+          model: process.env.OPENROUTER_MODEL
+        });
+
+        await store.saveReview(packet, {
+          slackTeamId: context.teamId,
+          slackChannelId: event.channel_id,
+          slackUserId: event.user_id
+        });
+
+        await client.chat.postMessage({
+          channel: event.channel_id,
+          text: packet.overallRisk.summary,
+          blocks: renderReviewPacket(packet)
+        });
+        await postReviewRoom({
+          client,
+          channel: event.channel_id,
+          packet,
+          store,
+          logger
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "File review failed.";
+        logger("file_review_failed", { message, fileId: event.file_id });
+        try {
+          await client.chat.postEphemeral({
+            channel: event.channel_id,
+            user: event.user_id,
+            text: `SecureLore could not review that file: ${message}`
+          });
+        } catch (notificationError) {
+          logger("file_review_notification_failed", {
+            message: notificationError instanceof Error ? notificationError.message : "unknown"
+          });
+        }
       }
-
-      const rawJson = await downloadSlackFileJson(file, botToken);
-      const classified = classifySlackFileJson(rawJson);
-      const policyContext = await policyContextProvider.retrieve(
-        buildPolicyQueryFromForm(classified),
-        context.teamId
-      );
-      const deterministicPacket = runReviewFromForm({
-        ...classified,
-        policyContext,
-        workspacePolicyJson: process.env.SECURELORE_WORKSPACE_POLICY_JSON
-      });
-      const packet = await enrichReviewPacket(deterministicPacket, {
-        openRouterApiKey: process.env.OPENROUTER_API_KEY,
-        model: process.env.OPENROUTER_MODEL
-      });
-
-      await store.saveReview(packet, {
-        slackTeamId: context.teamId,
-        slackChannelId: event.channel_id,
-        slackUserId: event.user_id
-      });
-
-      await client.chat.postMessage({
-        channel: event.channel_id,
-        text: packet.overallRisk.summary,
-        blocks: renderReviewPacket(packet)
-      });
-      await postReviewRoom({
-        client,
-        channel: event.channel_id,
-        packet,
-        store,
-        logger
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "File review failed.";
-      await client.chat.postEphemeral({
-        channel: event.channel_id,
-        user: event.user_id,
-        text: `SecureLore could not review that file: ${message}`
-      });
-    }
+    })();
+    await retainSlackWork(fileWork);
   });
 
   app.view("securelore_review_submit", async ({ ack, body, view, client }) => {
@@ -467,47 +506,53 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         action && "value" in action && typeof action.value === "string"
           ? action.value
           : "unknown";
-      await store.appendFeedback({
-        reviewId,
-        actionId,
-        userId: body.user.id,
-        channelId: body.channel?.id,
-        createdAt: new Date().toISOString()
-      });
-      let evalCreated = false;
-      if (actionId === "feedback_missed_issue" || actionId === "feedback_false_alarm") {
-        const packet = await store.getReview(reviewId, body.team?.id);
-        if (packet) {
-          evalCreated = await store.saveEvalCase({
-            id: `eval-${randomUUID()}`,
-            sourceReviewId: reviewId,
-            task: actionId === "feedback_missed_issue"
-              ? "detect_missed_review_issue"
-              : "prevent_false_alarm",
-            input: {
-              inputSummary: packet.inputSummary,
-              findings: packet.findings,
-              policyContextIds: packet.policyContext?.map((policy) => policy.id) ?? []
-            },
-            expected: {
-              feedback: actionId,
-              reviewRequired: true
-            },
-            status: "candidate"
+      await runAcknowledgedWork(
+        "feedback_capture",
+        async () => {
+          await store.appendFeedback({
+            reviewId,
+            actionId,
+            userId: body.user.id,
+            channelId: body.channel?.id,
+            createdAt: new Date().toISOString()
           });
-        }
-      }
-      logger("feedback_recorded", {
-        actionId,
-        reviewId,
-        userId: body.user.id
-      });
-      await client.chat.postMessage({
-        channel: responseChannel,
-        text: evalCreated
-          ? "Feedback captured and a candidate regression eval was created for review."
-          : "Feedback captured for review analytics."
-      });
+          let evalCreated = false;
+          if (actionId === "feedback_missed_issue" || actionId === "feedback_false_alarm") {
+            const packet = await store.getReview(reviewId, body.team?.id);
+            if (packet) {
+              evalCreated = await store.saveEvalCase({
+                id: `eval-${randomUUID()}`,
+                sourceReviewId: reviewId,
+                task: actionId === "feedback_missed_issue"
+                  ? "detect_missed_review_issue"
+                  : "prevent_false_alarm",
+                input: {
+                  inputSummary: packet.inputSummary,
+                  findings: packet.findings,
+                  policyContextIds: packet.policyContext?.map((policy) => policy.id) ?? []
+                },
+                expected: {
+                  feedback: actionId,
+                  reviewRequired: true
+                },
+                status: "candidate"
+              });
+            }
+          }
+          logger("feedback_recorded", {
+            actionId,
+            reviewId,
+            userId: body.user.id
+          });
+          await client.chat.postMessage({
+            channel: responseChannel,
+            text: evalCreated
+              ? "Feedback captured and a candidate regression eval was created for review."
+              : "Feedback captured for review analytics."
+          });
+        },
+        logger
+      );
     });
   }
 
@@ -528,62 +573,64 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
         reviewId,
         userId: body.user.id
       });
-      const packet = await store.getReview(reviewId, body.team?.id);
+      await runAcknowledgedWork("artifact_render", async () => {
+        const packet = await store.getReview(reviewId, body.team?.id);
 
-      if (!packet) {
-        logger("artifact_missing_review", {
-          artifactType: action.type,
-          reviewId
-        });
-        await client.chat.postMessage({
-          channel: responseChannel,
-          text: "Review packet was not found. Run the review again."
-        });
-        return;
-      }
+        if (!packet) {
+          logger("artifact_missing_review", {
+            artifactType: action.type,
+            reviewId
+          });
+          await client.chat.postMessage({
+            channel: responseChannel,
+            text: "Review packet was not found. Run the review again."
+          });
+          return;
+        }
 
-      const artifact = packet.generatedArtifacts?.find(
-        (candidate) => candidate.type === action.type
-      );
+        const artifact = packet.generatedArtifacts?.find(
+          (candidate) => candidate.type === action.type
+        );
 
-      if (!artifact) {
-        logger("artifact_missing", {
-          artifactType: action.type,
-          reviewId
-        });
-        await client.chat.postMessage({
-          channel: responseChannel,
-          text: "That artifact was not generated for this review."
-        });
-        return;
-      }
+        if (!artifact) {
+          logger("artifact_missing", {
+            artifactType: action.type,
+            reviewId
+          });
+          await client.chat.postMessage({
+            channel: responseChannel,
+            text: "That artifact was not generated for this review."
+          });
+          return;
+        }
 
-      if (action.type === "admin_approval_brief") {
-        const evidence = await store.listReviewEvidence(reviewId, 5);
+        if (action.type === "admin_approval_brief") {
+          const evidence = await store.listReviewEvidence(reviewId, 5);
+          await client.chat.postMessage({
+            channel: responseChannel,
+            text: artifact.title,
+            blocks: renderAdminBriefWithEvidence(packet, artifact as GeneratedArtifact, evidence)
+          });
+          logger("artifact_posted", {
+            artifactType: action.type,
+            reviewId,
+            userId: body.user.id,
+            evidenceCount: evidence.length
+          });
+          return;
+        }
+
         await client.chat.postMessage({
           channel: responseChannel,
           text: artifact.title,
-          blocks: renderAdminBriefWithEvidence(packet, artifact as GeneratedArtifact, evidence)
+          blocks: renderGeneratedArtifact(packet, artifact as GeneratedArtifact)
         });
         logger("artifact_posted", {
           artifactType: action.type,
           reviewId,
-          userId: body.user.id,
-          evidenceCount: evidence.length
+          userId: body.user.id
         });
-        return;
-      }
-
-      await client.chat.postMessage({
-        channel: responseChannel,
-        text: artifact.title,
-        blocks: renderGeneratedArtifact(packet, artifact as GeneratedArtifact)
-      });
-      logger("artifact_posted", {
-        artifactType: action.type,
-        reviewId,
-        userId: body.user.id
-      });
+      }, logger);
     });
   }
 
@@ -592,36 +639,52 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     if (body.type !== "block_actions") return;
     const reviewId = getActionValue(body.actions[0]);
     const responseChannel = getResponseChannel(body);
-    const packet = await store.getReview(reviewId, body.team?.id);
-
-    if (!packet) {
+    await runAcknowledgedWork("learning_trace", async () => {
+      const packet = await store.getReview(reviewId, body.team?.id);
+      if (!packet) {
+        await client.chat.postMessage({
+          channel: responseChannel,
+          text: "Review packet was not found. Run the review again."
+        });
+        return;
+      }
       await client.chat.postMessage({
         channel: responseChannel,
-        text: "Review packet was not found. Run the review again."
+        text: `Learning trace for ${reviewId}`,
+        blocks: renderLearningTrace(packet)
       });
-      return;
-    }
-    await client.chat.postMessage({
-      channel: responseChannel,
-      text: `Learning trace for ${reviewId}`,
-      blocks: renderLearningTrace(packet)
-    });
-    logger("learning_trace_posted", {
-      reviewId,
-      userId: body.user.id
-    });
+      logger("learning_trace_posted", {
+        reviewId,
+        userId: body.user.id
+      });
+    }, logger);
   });
 
   app.action("room_add_evidence", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
     const reviewId = getActionValue(body.actions[0]);
-    const packet = await store.getReview(reviewId, body.team?.id);
-
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: evidenceModal(reviewId, packet ?? undefined)
-    });
+    await runAcknowledgedWork(
+      "evidence_modal",
+      async () => {
+        const packet = await withTimeout(
+          store.getReview(reviewId, body.team?.id),
+          800,
+          "Evidence context lookup timed out"
+        ).catch((error) => {
+          logger("evidence_modal_context_unavailable", {
+            reviewId,
+            message: error instanceof Error ? error.message : "unknown"
+          });
+          return null;
+        });
+        return client.views.open({
+          trigger_id: body.trigger_id,
+          view: evidenceModal(reviewId, packet ?? undefined)
+        });
+      },
+      logger
+    );
   });
 
   app.view("securelore_evidence_submit", async ({ ack, body, view, client }) => {
@@ -756,83 +819,94 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     if (body.type !== "block_actions" || !body.trigger_id) return;
     const reviewId = getActionValue(body.actions[0]);
 
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: lessonModal(reviewId)
-    });
+    await runAcknowledgedWork(
+      "lesson_modal",
+      () => client.views.open({ trigger_id: body.trigger_id, view: lessonModal(reviewId) }),
+      logger
+    );
   });
 
   app.action("room_submit_fix", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: reviewModal(getActionValue(body.actions[0]))
-    });
+    await runAcknowledgedWork(
+      "fix_modal",
+      () => client.views.open({
+        trigger_id: body.trigger_id,
+        view: reviewModal(getActionValue(body.actions[0]))
+      }),
+      logger
+    );
   });
 
   app.action("room_record_decision", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: decisionModal(getActionValue(body.actions[0]))
-    });
+    await runAcknowledgedWork(
+      "decision_modal",
+      () => client.views.open({
+        trigger_id: body.trigger_id,
+        view: decisionModal(getActionValue(body.actions[0]))
+      }),
+      logger
+    );
   });
 
   app.action("room_request_admin_review", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions") return;
     const reviewId = getActionValue(body.actions[0]);
-    const packet = await store.getReview(reviewId, body.team?.id);
-    const approvalChannel = process.env.SLACK_APPROVAL_CHANNEL_ID;
-    if (!packet) {
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: "Review packet was not found. Run the review again."
-      });
-      return;
-    }
-    if (!packet.artifactFingerprint) {
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: "This is a legacy review without an artifact fingerprint. Run a new review before requesting admin approval."
-      });
-      return;
-    }
-    if (!approvalChannel) {
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: "An admin review channel is not configured. Set `SLACK_APPROVAL_CHANNEL_ID` before requesting approval."
-      });
-      return;
-    }
+    await runAcknowledgedWork("admin_review_request", async () => {
+      const packet = await store.getReview(reviewId, body.team?.id);
+      const approvalChannel = process.env.SLACK_APPROVAL_CHANNEL_ID;
+      if (!packet) {
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: "Review packet was not found. Run the review again."
+        });
+        return;
+      }
+      if (!packet.artifactFingerprint) {
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: "This is a legacy review without an artifact fingerprint. Run a new review before requesting admin approval."
+        });
+        return;
+      }
+      if (!approvalChannel) {
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: "An admin review channel is not configured. Set `SLACK_APPROVAL_CHANNEL_ID` before requesting approval."
+        });
+        return;
+      }
 
-    await client.chat.postMessage({
-      channel: approvalChannel,
-      text: `<@${body.user.id}> requested admin review for ${reviewId}.`,
-      blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `*Admin review requested by <@${body.user.id}>*\nArtifact: \`${packet.artifactFingerprint}\``
-          }
-        },
-        ...renderReviewPacket(packet)
-      ]
-    });
-    await postReviewRoom({
-      client,
-      channel: approvalChannel,
-      packet,
-      store,
-      logger
-    });
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: `Admin review requested in <#${approvalChannel}> for artifact ${packet.artifactFingerprint.slice(0, 20)}…`
-    });
+      await client.chat.postMessage({
+        channel: approvalChannel,
+        text: `<@${body.user.id}> requested admin review for ${reviewId}.`,
+        blocks: [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: `*Admin review requested by <@${body.user.id}>*\nArtifact: \`${packet.artifactFingerprint}\``
+            }
+          },
+          ...renderReviewPacket(packet)
+        ]
+      });
+      await postReviewRoom({
+        client,
+        channel: approvalChannel,
+        packet,
+        store,
+        logger
+      });
+      await client.chat.postMessage({
+        channel: body.user.id,
+        text: `Admin review requested in <#${approvalChannel}> for artifact ${packet.artifactFingerprint.slice(0, 20)}…`
+      });
+    }, logger);
   });
 
   app.view("securelore_decision_submit", async ({ ack, body, view, client }) => {
@@ -858,52 +932,50 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
       return;
     }
 
-    const packet = await store.getReview(reviewId, body.team?.id);
-    if (!packet) {
-      await ack({
-        response_action: "errors",
-        errors: { decision_rationale_block: "Review packet was not found." }
-      });
-      return;
-    }
-    if (!packet.artifactFingerprint) {
-      await ack({
-        response_action: "errors",
-        errors: { decision_rationale_block: "Legacy reviews cannot be approved. Run a new fingerprinted review." }
-      });
-      return;
-    }
-
     try {
-      const updated = recordReviewDecision(packet, {
-        status: status as "approved" | "changes_requested" | "warnings_accepted",
-        rationale,
-        decidedBy: body.user.id,
-        decidedAt: new Date().toISOString(),
-        artifactFingerprint: packet.artifactFingerprint
-      });
       await ack();
-      await store.saveReview(updated, {
-        slackTeamId: body.team?.id,
-        slackUserId: body.user.id
-      });
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: `Review decision recorded: ${status.replaceAll("_", " ")}.`
-      });
-      await postReviewRoom({
-        client,
-        channel: body.user.id,
-        packet: updated,
-        store,
-        logger
-      });
-    } catch (error) {
-      await ack({
-        response_action: "errors",
-        errors: {
-          decision_rationale_block: error instanceof Error ? error.message : "Decision could not be recorded."
+      await runAcknowledgedWork("review_decision", async () => {
+        const packet = await store.getReview(reviewId, body.team?.id);
+        if (!packet) {
+          await client.chat.postMessage({
+            channel: body.user.id,
+            text: "Review decision was not recorded because the packet was not found."
+          });
+          return;
         }
+        if (!packet.artifactFingerprint) {
+          await client.chat.postMessage({
+            channel: body.user.id,
+            text: "Legacy reviews cannot be approved. Run a new fingerprinted review."
+          });
+          return;
+        }
+        const updated = recordReviewDecision(packet, {
+          status: status as "approved" | "changes_requested" | "warnings_accepted",
+          rationale,
+          decidedBy: body.user.id,
+          decidedAt: new Date().toISOString(),
+          artifactFingerprint: packet.artifactFingerprint
+        });
+        await store.saveReview(updated, {
+          slackTeamId: body.team?.id,
+          slackUserId: body.user.id
+        });
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: `Review decision recorded: ${status.replaceAll("_", " ")}.`
+        });
+        await postReviewRoom({
+          client,
+          channel: body.user.id,
+          packet: updated,
+          store,
+          logger
+        });
+      }, logger);
+    } catch (error) {
+      logger("review_decision_ack_failed", {
+        message: error instanceof Error ? error.message : "Decision could not be acknowledged."
       });
     }
   });
@@ -998,37 +1070,41 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
   app.action("home_refresh", async ({ ack, body, client, context }) => {
     await ack();
     if (body.type !== "block_actions") return;
-    const reviewerMode = isReviewer(body.user.id);
-    const reviews = await store.listRecentReviews({
-      slackTeamId: context.teamId,
-      slackUserId: reviewerMode ? undefined : body.user.id,
-      limit: 10
-    });
-    await client.views.publish({
-      user_id: body.user.id,
-      view: {
-        type: "home",
-        blocks: renderAppHome(reviews, { reviewerMode })
-      }
-    });
+    await runAcknowledgedWork("home_refresh", async () => {
+      const reviewerMode = isReviewer(body.user.id);
+      const reviews = await store.listRecentReviews({
+        slackTeamId: context.teamId,
+        slackUserId: reviewerMode ? undefined : body.user.id,
+        limit: 10
+      });
+      await client.views.publish({
+        user_id: body.user.id,
+        view: {
+          type: "home",
+          blocks: renderAppHome(reviews, { reviewerMode })
+        }
+      });
+    }, logger);
   });
 
   app.action("home_new_review", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: reviewModal()
-    });
+    await runAcknowledgedWork(
+      "home_review_modal",
+      () => client.views.open({ trigger_id: body.trigger_id, view: reviewModal() }),
+      logger
+    );
   });
 
   app.action("home_delete_data", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions" || !body.trigger_id) return;
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: deleteDataModal()
-    });
+    await runAcknowledgedWork(
+      "delete_data_modal",
+      () => client.views.open({ trigger_id: body.trigger_id, view: deleteDataModal() }),
+      logger
+    );
   });
 
   app.view("securelore_delete_data_submit", async ({ ack, body, view, client }) => {
@@ -1049,58 +1125,57 @@ export function createSecureLoreApp(options: { receiver?: Receiver } = {}) {
     }
 
     await ack();
-    try {
-      const deleted = await store.deleteUserData(body.team.id, body.user.id);
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: deleted
-          ? "Your SecureLore review sessions, evidence, feedback, candidate evals, and promoted lessons were deleted."
-          : "Persistent deletion is unavailable in local development mode. No production data was changed."
-      });
-    } catch (error) {
-      logger("user_data_deletion_failed", {
-        teamId: body.team.id,
-        userId: body.user.id,
-        message: error instanceof Error ? error.message : "unknown"
-      });
-      await client.chat.postMessage({
-        channel: body.user.id,
-        text: "SecureLore could not delete your review data. No partial-success claim was recorded; contact the project owner with your workspace and user ID."
-      });
-    }
+    await runAcknowledgedWork("user_data_deletion", async () => {
+      try {
+        const deleted = await store.deleteUserData(body.team!.id, body.user.id);
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: deleted
+            ? "Your SecureLore review sessions, evidence, feedback, candidate evals, and promoted lessons were deleted."
+            : "Persistent deletion is unavailable in local development mode. No production data was changed."
+        });
+      } catch (error) {
+        logger("user_data_deletion_failed", {
+          teamId: body.team!.id,
+          userId: body.user.id,
+          message: error instanceof Error ? error.message : "unknown"
+        });
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: "SecureLore could not delete your review data. No partial-success claim was recorded; contact the project owner with your workspace and user ID."
+        });
+      }
+    }, logger);
   });
 
   app.action("home_open_room", async ({ ack, body, client }) => {
     await ack();
     if (body.type !== "block_actions") return;
     const reviewId = getActionValue(body.actions[0]);
-    const packet = await store.getReview(reviewId, body.team?.id);
-    if (!packet) {
-      await client.chat.postMessage({
+    await runAcknowledgedWork("home_open_room", async () => {
+      const packet = await store.getReview(reviewId, body.team?.id);
+      if (!packet) {
+        await client.chat.postMessage({
+          channel: body.user.id,
+          text: "Review packet was not found. Run the review again."
+        });
+        return;
+      }
+      await postReviewRoom({
+        client,
         channel: body.user.id,
-        text: "Review packet was not found. Run the review again."
+        packet,
+        store,
+        logger
       });
-      return;
-    }
-
-    await postReviewRoom({
-      client,
-      channel: body.user.id,
-      packet,
-      store,
-      logger
-    });
+    }, logger);
   });
 
   app.event("app_mention", async ({ event, say }) => {
-    if (!("text" in event) || !event.text?.toLowerCase().includes("review")) {
-      await say("Mention me with `review` or run `/securelore review`.");
-      return;
-    }
-
-    await say(
-      "Run `/securelore review` to paste a real Slack manifest or MCP tools/list response."
-    );
+    const mentionWork = !("text" in event) || !event.text?.toLowerCase().includes("review")
+      ? say("Mention me with `review` or run `/securelore review`.")
+      : say("Run `/securelore review` to paste a real Slack manifest or MCP tools/list response.");
+    await retainSlackWork(mentionWork);
   });
 
   return app;
@@ -1114,6 +1189,41 @@ function createRuntimeLogger() {
       ...fields
     }));
   };
+}
+
+async function retainSlackWork(work: Promise<unknown>): Promise<void> {
+  if (isVercel) {
+    waitUntil(work);
+    return;
+  }
+  await work;
+}
+
+async function runAcknowledgedWork(
+  event: string,
+  operation: () => Promise<unknown>,
+  logger: ReturnType<typeof createRuntimeLogger>,
+  onError?: () => Promise<unknown>
+): Promise<void> {
+  const work = operation().then(
+    () => logger(`${event}_completed`),
+    async (error) => {
+      logger(`${event}_failed`, {
+        code: error && typeof error === "object" && "code" in error ? error.code : "unknown",
+        message: error instanceof Error ? error.message : "unknown"
+      });
+      if (onError) {
+        try {
+          await onError();
+        } catch (fallbackError) {
+          logger(`${event}_fallback_failed`, {
+            message: fallbackError instanceof Error ? fallbackError.message : "unknown"
+          });
+        }
+      }
+    }
+  );
+  await retainSlackWork(work);
 }
 
 async function runBestEffort(

@@ -41,7 +41,9 @@ if (
   !boltSource.includes("tokenVerificationEnabled: false") ||
   !boltSource.includes("app.error(async") ||
   !boltSource.includes("waitUntil(messageWork)") ||
-  !boltSource.includes("unfurl_links: false")
+  !boltSource.includes("unfurl_links: false") ||
+  !boltSource.includes("runAcknowledgedWork") ||
+  /await (?:client|app\.client)\.views\.open/.test(boltSource)
 ) {
   throw new Error("Agent View runtime or latency boundaries regressed.");
 }
